@@ -1,0 +1,81 @@
+# numerai_dev
+
+A hobby research pipeline for the [Numerai Classic](https://numer.ai) tournament.
+The goal is tournament performance, with experiments that are reproducible and
+compared with sound statistics.
+
+Current best on dev eras: **CORR60 0.044** (4 era-bagged LightGBMs on all 3,555
+features). See [docs/results.md](docs/results.md).
+
+## Setup
+
+Requires Python 3.12. On Apple Silicon, use conda-forge so LightGBM gets OpenMP:
+
+```bash
+conda create -n numerai -c conda-forge python=3.12 lightgbm pandas pyarrow polars numpy scipy scikit-learn pytest ruff pyyaml
+conda activate numerai
+pip install numerapi numerai-tools
+pip install -e .
+```
+
+Download the data (about 9.3 GB into `data/v5.3/`, which git ignores):
+
+```bash
+python scripts/download_data.py
+```
+
+## Usage
+
+Each experiment is a YAML config in `configs/`:
+
+```bash
+python scripts/run_experiment.py configs/lgbm_all_bag4.yaml
+```
+
+This trains the model, scores it on the dev eras, saves the model and predictions
+to `artifacts/<name>/`, and appends a record (config, git hash, metrics, runtime,
+peak memory) to `experiments/log.jsonl`. To also score the locked holdout, add
+`--holdout`, but only for final candidates.
+
+Compare two experiments era by era:
+
+```bash
+python scripts/compare.py lgbm_all_stride4 lgbm_all_bag4
+```
+
+Run the tests:
+
+```bash
+pytest
+```
+
+## Methodology
+
+- **Data:** dataset v5.3, target `target_ender_60` (60-day horizon).
+- **Splits:** train on `train.parquet`. Validation is split chronologically into
+  *dev* (for model selection) and a locked *holdout* (the last 52 resolved eras).
+  A 13-era embargo separates each window, because 60-day targets overlap
+  neighboring weekly eras.
+- **Metrics:** scored with Numerai's official `numerai-tools`. We report CORR,
+  MMC (meta model contribution; covers only eras 1133+), BMC (contribution
+  against Numerai's benchmark model, used as the dev-set stand-in for MMC), and
+  the payout proxy `3·CORR + 15·MMC`.
+- **Comparisons:** paired per-era differences with a 13-era block bootstrap CI.
+- **Memory:** features are streamed as int8 into numpy and freed after LightGBM
+  binning, so the full feature set trains in about 12 GB.
+
+## Layout
+
+```text
+configs/        experiment configs (YAML)
+scripts/        download_data.py, run_experiment.py, compare.py
+src/numerai_dev data loading, splits, evaluation, experiment log
+tests/          pytest suite
+docs/           plan.md (roadmap), results.md (results so far)
+experiments/    log.jsonl, the append-only record of every run
+```
+
+## Roadmap
+
+See [docs/plan.md](docs/plan.md). Next up: target ensembles and feature
+neutralization to raise MMC, then automated live submissions (unstaked).
