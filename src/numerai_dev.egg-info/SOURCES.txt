@@ -1,0 +1,9 @@
+pyproject.toml
+src/numerai_dev/__init__.py
+src/numerai_dev/data.py
+src/numerai_dev/evaluation.py
+src/numerai_dev.egg-info/PKG-INFO
+src/numerai_dev.egg-info/SOURCES.txt
+src/numerai_dev.egg-info/dependency_links.txt
+src/numerai_dev.egg-info/requires.txt
+src/numerai_dev.egg-info/top_level.txt

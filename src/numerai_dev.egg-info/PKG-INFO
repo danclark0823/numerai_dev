@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: numerai-dev
+Version: 0.1.0
+Requires-Python: >=3.12
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: pyarrow
+Requires-Dist: polars
+Requires-Dist: lightgbm
+Requires-Dist: scikit-learn
+Requires-Dist: scipy
+Requires-Dist: pyyaml
+Requires-Dist: numerapi
+Requires-Dist: numerai-tools
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"

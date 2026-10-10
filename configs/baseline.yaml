@@ -1,0 +1,22 @@
+# Reproduction of Numerai's "Hello Numerai" example model.
+name: baseline_lgbm_medium
+hypothesis: >
+  The official example-model recipe (LightGBM, medium features, every 4th era)
+  reproduces a CORR in the same range as Numerai's reference validation predictions.
+data:
+  version: v5.3
+  feature_set: medium
+  target: target_ender_60
+  era_stride: 4
+validation:
+  holdout_eras: 52    # last ~1 year of resolved eras, locked; meta model covers these
+model:
+  type: lgbm
+  params:
+    n_estimators: 2000
+    learning_rate: 0.01
+    max_depth: 5
+    num_leaves: 31
+    colsample_bytree: 0.1
+    random_state: 42
+    verbose: -1

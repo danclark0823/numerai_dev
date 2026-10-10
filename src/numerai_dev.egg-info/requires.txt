@@ -1,0 +1,14 @@
+numpy
+pandas
+pyarrow
+polars
+lightgbm
+scikit-learn
+scipy
+pyyaml
+numerapi
+numerai-tools
+
+[dev]
+pytest
+ruff
