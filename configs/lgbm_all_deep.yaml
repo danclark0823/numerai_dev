@@ -1,0 +1,22 @@
+name: lgbm_all_deep
+hypothesis: >
+  Deeper trees (closer to Numerai's benchmark settings) improve dev CORR over the
+  depth-5 model on all features, at the same data and learning-rate x rounds budget.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  era_stride: 4
+validation:
+  holdout_eras: 52
+model:
+  type: lgbm
+  params:
+    n_estimators: 3000
+    learning_rate: 0.01
+    max_depth: 10
+    num_leaves: 1023
+    min_data_in_leaf: 2500   # Numerai uses 10000 on ~4x the rows
+    colsample_bytree: 0.1
+    random_state: 42
+    verbose: -1
