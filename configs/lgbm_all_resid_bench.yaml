@@ -1,0 +1,23 @@
+name: lgbm_all_resid_bench
+hypothesis: >
+  Training on target_ender_60 residualized (per era) against the v53_lgbm_ender60
+  benchmark's out-of-sample train predictions yields positive BMC, i.e. signal the
+  benchmark lacks. Only train eras with benchmark predictions (~157+) are usable.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  residualize_against: v53_lgbm_ender60
+  era_stride: 4
+validation:
+  holdout_eras: 52
+model:
+  type: lgbm
+  params:
+    n_estimators: 2000
+    learning_rate: 0.01
+    max_depth: 5
+    num_leaves: 31
+    colsample_bytree: 0.1
+    random_state: 42
+    verbose: -1

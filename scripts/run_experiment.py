@@ -29,6 +29,7 @@ from numerai_dev.data import (
 from numerai_dev.evaluation import BENCHMARK_COL, evaluate, flatten, prediction_correlation
 from numerai_dev.experiment import ROOT, log_run
 from numerai_dev.splits import make_split
+from numerai_dev.targets import residualize
 
 
 def peak_rss_gb() -> float:
@@ -37,10 +38,9 @@ def peak_rss_gb() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale / 1e9
 
 
-def train_lgbm(version: str, features: list[str], index: pd.DataFrame, mask: np.ndarray,
-               target: str, model_cfg: dict) -> lgb.Booster:
+def train_lgbm(version: str, features: list[str], mask: np.ndarray, y: np.ndarray,
+               model_cfg: dict) -> lgb.Booster:
     x = load_features(version, "train", features, mask)
-    y = index.loc[mask, target].to_numpy(dtype=np.float32)
     print(f"train: {x.shape}, {x.nbytes / 1e9:.1f} GB raw", flush=True)
     params = {"objective": "regression", **model_cfg["params"]}
     num_rounds = params.pop("n_estimators")
@@ -69,13 +69,27 @@ def main() -> None:
     if cfg["model"]["type"] != "lgbm":
         raise ValueError(f"unknown model type {cfg['model']['type']}")
 
+    # --- training label: another target, optionally residualized against a benchmark ---
+    train_target = d.get("train_target", target)
+    tidx = load_index(version, "train", [train_target])
+    label = train_target
+    if ref := d.get("residualize_against"):
+        bench = pd.read_parquet(data_path(version, "train_benchmark_models.parquet"),
+                                columns=[ref])
+        tidx = tidx.join(bench)
+        has = tidx[[train_target, ref]].notna().all(axis=1)
+        tidx["label"] = np.nan
+        tidx.loc[has, "label"] = residualize(tidx.loc[has], train_target, ref)
+        label = "label"
+        del bench
+
     # --- train: one model per era offset, averaged (all data at constant memory) ---
-    tidx = load_index(version, "train", [target])
     models, train_eras = [], set()
     for offset in d.get("era_offsets", [0]):
-        tmask = era_mask(tidx, era_stride=d["era_stride"], era_offset=offset, require=[target])
+        tmask = era_mask(tidx, era_stride=d["era_stride"], era_offset=offset, require=[label])
         train_eras |= set(tidx.loc[tmask, "era"])
-        models.append(train_lgbm(version, features, tidx, tmask, target, cfg["model"]))
+        y = tidx.loc[tmask, label].to_numpy(dtype=np.float32)
+        models.append(train_lgbm(version, features, tmask, y, cfg["model"]))
         print(f"offset {offset} trained at {time.time() - started:.0f}s, "
               f"peak {peak_rss_gb():.1f} GB", flush=True)
     del tidx

@@ -1,0 +1,22 @@
+name: lgbm_all_ender_20
+hypothesis: >
+  A model trained on target_ender_20 (scored on target_ender_60) adds diversity to a
+  target ensemble, raising BMC/MMC more than it costs in CORR.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  train_target: target_ender_20
+  era_stride: 4
+validation:
+  holdout_eras: 52
+model:
+  type: lgbm
+  params:
+    n_estimators: 2000
+    learning_rate: 0.01
+    max_depth: 5
+    num_leaves: 31
+    colsample_bytree: 0.1
+    random_state: 42
+    verbose: -1

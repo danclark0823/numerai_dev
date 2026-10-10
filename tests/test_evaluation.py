@@ -35,3 +35,15 @@ def test_summarize_drawdown():
     s = summarize(pd.Series([1.0, -2.0, 1.0, -1.0]))
     assert s["max_drawdown"] == -2.0
     assert s["pct_positive"] == 0.5
+
+
+def test_residualized_target_is_orthogonal_to_reference():
+    from numerai_dev.targets import gaussianize, residualize
+
+    df = fake_frame()
+    resid = residualize(df, "target", "numerai_meta_model")
+    for _, d in df.assign(r=resid).groupby("era"):
+        b = gaussianize(d["numerai_meta_model"])
+        assert abs(np.corrcoef(d["r"], b)[0, 1]) < 1e-8
+    # The residual keeps signal the reference misses.
+    assert np.corrcoef(resid, df["good"])[0, 1] > 0.1

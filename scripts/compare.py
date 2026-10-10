@@ -15,7 +15,13 @@ import numpy as np
 import pandas as pd
 
 from numerai_dev.data import data_path, era_key
-from numerai_dev.evaluation import BENCHMARK_COL, per_era_contribution, per_era_corr
+from numerai_dev.evaluation import (
+    BENCHMARK_COL,
+    CORR_WEIGHT,
+    MMC_WEIGHT,
+    per_era_contribution,
+    per_era_corr,
+)
 from numerai_dev.experiment import ROOT
 
 
@@ -38,6 +44,8 @@ def main() -> None:
     parser.add_argument("b")
     parser.add_argument("--target", default="target_ender_60")
     parser.add_argument("--version", default="v5.3")
+    parser.add_argument("--from-era", default=None,
+                        help="only score eras >= this (e.g. an ensemble's B half)")
     args = parser.parse_args()
 
     pa = pd.read_parquet(ROOT / "artifacts" / args.a / "validation_preds.parquet")
@@ -49,12 +57,15 @@ def main() -> None:
     df = df.join(pd.read_parquet(data_path(args.version, "validation_benchmark_models.parquet"),
                                  columns=[BENCHMARK_COL]))
     df = df.dropna(subset=[args.target])
+    if args.from_era:
+        df = df[df["era"].map(era_key) >= era_key(args.from_era)]
 
     scores = {
         "corr": per_era_corr(df, ["a", "b"], args.target),
         "bmc": per_era_contribution(df, ["a", "b"], args.target, BENCHMARK_COL),
     }
-    print(f"{args.b} - {args.a}  ({df['era'].nunique()} eras)")
+    scores["payout"] = CORR_WEIGHT * scores["corr"] + MMC_WEIGHT * scores["bmc"]
+    print(f"{args.b} - {args.a}  ({df['era'].nunique()} eras; payout = 3*CORR + 15*BMC)")
     for name, s in scores.items():
         s = s.loc[sorted(s.index, key=era_key)]
         diff = (s["b"] - s["a"]).to_numpy()
