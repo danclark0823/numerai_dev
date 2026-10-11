@@ -49,6 +49,28 @@ Run the tests:
 pytest
 ```
 
+## Live submissions
+
+Numerai models and what they submit are defined in [configs/live.yaml](configs/live.yaml):
+
+| Numerai model | Submits |
+|---|---|
+| `lgbm_bag4` | 4 era-bagged LightGBMs on `ender_60` (CORR-focused) |
+| `dc_resid_ensemble` | benchmark-residual + teager2b_60 models, 50% neutralized (diversification) |
+
+Credentials go in `.env` (`NUMERAI_PUBLIC_ID`, `NUMERAI_SECRET_KEY`; git-ignored).
+Use an API key with only upload + read scopes, never staking.
+
+```bash
+python scripts/submit_live.py --check-validation  # live code path == validated preds
+python scripts/submit_live.py                     # dry run: predict + validate
+python scripts/submit_live.py --upload            # upload this round
+```
+
+Prediction files go to `predictions/<round>/`, and every run is logged to
+`experiments/submissions.jsonl`. Live models use the saved `artifacts/`, which
+exist only locally, so the experiments must be run once on this machine first.
+
 ## Methodology
 
 - **Data:** dataset v5.3, target `target_ender_60` (60-day horizon).

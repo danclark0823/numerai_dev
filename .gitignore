@@ -2,9 +2,10 @@ data/
 artifacts/
 *.pkl
 *.parquet
-.env
+.env*
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/
 .DS_Store
+predictions/

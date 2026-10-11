@@ -1,0 +1,24 @@
+# Live tournament models. Each Numerai model name maps to the validated
+# experiment artifacts whose predictions it submits.
+version: v5.3
+feature_set: all          # features the member models were trained on
+
+models:
+  lgbm_bag4:
+    description: >
+      CORR-focused. 4 LightGBMs (all features, target_ender_60), each trained on
+      a different every-4th-era subset of train, averaged.
+      Dev CORR 0.044. See docs/results.md.
+    members: [lgbm_all_bag4]
+    neutralize: null
+
+  dc_resid_ensemble:
+    description: >
+      Diversification-focused. Equal-weight gaussianized average of a model
+      trained on target_ender_60 residualized against Numerai's benchmark, and a
+      model trained on target_teager2b_60; then 50% neutralized against the
+      medium feature set. Dev-B BMC 0.0037 (2x lgbm_bag4).
+    members: [lgbm_all_resid_bench, lgbm_all_teager2b_60]
+    neutralize:
+      feature_set: medium
+      proportion: 0.5
