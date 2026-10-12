@@ -101,7 +101,8 @@ def main() -> None:
     stream = d.get("stream", False)
     if stream and cfg["model"]["type"] != "lgbm":
         raise SystemExit("stream is only supported for lgbm")
-    if include_val and not args.holdout:
+    final = include_val == "all"  # production fit: every resolved era, nothing left to score
+    if include_val and not final and not args.holdout:
         raise SystemExit("include_validation trains on dev eras; only --holdout can score it")
 
     # --- training rows: train eras, plus validation eras up to the holdout embargo ---
@@ -110,7 +111,7 @@ def main() -> None:
     refs = [] if not ref else ([ref] if isinstance(ref, str) else list(ref))
     parts = [("train", label_frame(version, "train", train_target, refs), None)]
     if include_val:
-        last_ok = era_key(holdout[0]) - gap - 1
+        last_ok = 10**9 if final else era_key(holdout[0]) - gap - 1
         allowed = [e for e in resolved_eras if era_key(e) <= last_ok]
         parts.append(("validation", label_frame(version, "validation", train_target, refs),
                       allowed))
@@ -148,6 +149,18 @@ def main() -> None:
         print(f"offset {offset} trained at {time.time() - started:.0f}s, "
               f"peak {peak_rss_gb():.1f} GB", flush=True)
     del parts
+    if final:
+        out_dir = ROOT / "artifacts" / cfg["name"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for i, m in enumerate(models):
+            m.save_model(str(out_dir / f"model_{i}.txt"))
+        record = log_run(cfg["name"], cfg, {}, started, kind="final_fit",
+                         train_eras=[min(train_eras, key=era_key), max(train_eras, key=era_key),
+                                     len(train_eras)],
+                         peak_rss_gb=round(peak_rss_gb(), 2))
+        print(f"final fit saved to artifacts/{cfg['name']} in {record['seconds']}s "
+              f"(eras {record['train_eras']}), not scored")
+        return
     assert_no_overlap(sorted(train_eras, key=era_key), holdout, gap)
 
     # --- predict validation in batches ---

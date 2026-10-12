@@ -6,10 +6,11 @@ feature_set: all          # features the member models were trained on
 models:
   lgbm_bag4:
     description: >
-      CORR-focused. 4 LightGBMs (all features, target_ender_60), each trained on
-      a different every-4th-era subset of train, averaged.
-      Dev CORR 0.044. See docs/results.md.
-    members: [lgbm_all_bag4]
+      CORR-focused. LightGBM (all features, target_ender_60) trained on every
+      resolved era of train + validation (final_ender60). Same settings as
+      recent_ender60: holdout CORR 0.018, MMC 0.0069. (Name predates the
+      switch from 4 era-bagged train-only models; see docs/results.md.)
+    members: [final_ender60]
     neutralize: null
 
   dc_resid_ensemble:
@@ -17,8 +18,9 @@ models:
       Diversification-focused. Equal-weight gaussianized average of a model
       trained on target_ender_60 residualized against Numerai's benchmark, and a
       model trained on target_teager2b_60; then 50% neutralized against the
-      medium feature set. Dev-B BMC 0.0037 (2x lgbm_bag4).
-    members: [lgbm_all_resid_bench, lgbm_all_teager2b_60]
+      medium feature set. Both trained on all eras up to the holdout embargo.
+      Holdout CORR 0.0205, MMC 0.0099.
+    members: [recent_resid_bench, recent_teager2b_60]
     neutralize:
       feature_set: medium
       proportion: 0.5
@@ -27,7 +29,8 @@ models:
     description: >
       Experimental diversifier (Spellmonger war-mage series). LightGBM, all
       features, trained on target_ender_60 residualized per era against both
-      Numerai benchmarks (v53_lgbm_ender60 and _ender20). Corr with meta model
-      0.29; holdout MMC 0.0030 vs lgbm_bag4 -0.0005 (CI +0.0007..+0.0089).
-    members: [lgbm_resid_both]
+      Numerai benchmarks (v53_lgbm_ender60 and _ender20), on all eras up to the
+      holdout embargo (recent_resid_both). Holdout CORR 0.0190, MMC 0.0109,
+      MMC positive in 92% of holdout eras; corr with meta model 0.31.
+    members: [recent_resid_both]
     neutralize: null

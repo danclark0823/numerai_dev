@@ -93,3 +93,47 @@ bootstrap blocks). **Deployed as `dc_tyndal`.**
 **Warning:** CORR on the holdout is ~4x lower than on dev for every model. All
 models are trained only on train eras (≤ 574); the most recent year looks like
 a different regime. Retraining on recent (validation) eras is the top priority.
+
+## Round 4: retraining on recent data (2026-10-12)
+
+Same model settings, but trained on **every era** of train + validation up to
+the holdout embargo (5.8–6.4M rows, streamed; ~45 min and ≤12 GB per model),
+instead of every 4th era of train only. Holdout look #2, eras 1176–1227:
+
+| Model | CORR | MMC | % eras MMC>0 | 3·CORR+15·MMC | Corr w/ meta |
+|---|---|---|---|---|---|
+| `lgbm_bag4` (train only) | 0.0075 | −0.0005 | 48% | 0.015 | 0.43 |
+| `recent_bag4` | 0.0180 | 0.0069 | 65% | 0.157 | 0.49 |
+| `dc_resid_ensemble` (train only) | 0.0093 | 0.0015 | 60% | 0.051 | 0.39 |
+| `recent_resid_ensemble` | 0.0205 | 0.0099 | 83% | 0.210 | 0.46 |
+| `dc_tyndal` (train only) | 0.0079 | 0.0030 | 54% | 0.069 | 0.29 |
+| `recent_tyndal` | 0.0190 | 0.0109 | 92% | 0.220 | 0.31 |
+
+Paired vs `lgbm_bag4`: `recent_bag4` CORR +0.0105 [+.004, +.018], MMC +0.0074
+[+.002, +.014]; `recent_resid_ensemble` MMC +0.0104 [+.001, +.021];
+`recent_tyndal` MMC +0.0114 [−.001, +.026] (P≈0.04, 4 blocks).
+
+**Verdict:** recent data is the biggest gain so far (~10x payout proxy). The
+residual models gained most, so residualizing against possibly in-sample
+validation benchmark preds did not hurt. Settings frozen; production models
+(`configs/final/`) are refit on all resolved eras including the holdout.
+
+### Memory correction (2026-10-12)
+
+Earlier "peak memory" numbers came from `ru_maxrss`, which excludes memory
+macOS compresses. True footprint (`footprint` / `time -l`) for LightGBM with
+all 3,555 features is ~1.6 bytes per value once built (5-value features, 4-bit
+bins plus a per-row push buffer LightGBM keeps), peaking higher while building:
+
+| Rows | True footprint |
+|---|---|
+| 1.7M (every 4th era, train+val) | 10 GB steady, 16 GB peak |
+| 6.4M (`recent_*`) | ~38 GB; survived on compression, 44 min |
+| 6.8M (`final_*`, incl. holdout) | ~40 GB; swapped, `final_ender60` took 9.7 h |
+
+Arrow's default allocator also retained ~3–6 GB of parquet buffers per reader;
+`data.py` now uses the system allocator and no pre-buffering. **For full-data
+fits on 24 GB, use era bagging (stride 4 × 4 offsets) or a bigger machine.**
+
+Deployed: `lgbm_bag4` ← `final_ender60`; `dc_tyndal` ← `recent_resid_both`;
+`dc_resid_ensemble` ← `recent_resid_bench` + `recent_teager2b_60`.

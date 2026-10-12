@@ -13,10 +13,16 @@ from pathlib import Path
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 BATCH_ROWS = 65_536
+
+# Arrow's default allocator (mimalloc) keeps freed parquet buffers, which piles up
+# several GB while streaming; the system allocator hands them back. macOS hides
+# this from RSS by compressing it, so it showed up as swapping, not as peak RSS.
+pa.set_memory_pool(pa.system_memory_pool())
 
 
 def data_path(version: str, name: str) -> Path:
@@ -71,7 +77,8 @@ def era_mask(
 
 
 def _batches(version: str, split: str, features: list[str]) -> Iterator[np.ndarray]:
-    pf = pq.ParquetFile(data_path(version, f"{split}.parquet"))
+    pf = pq.ParquetFile(data_path(version, f"{split}.parquet"), pre_buffer=False,
+                        buffer_size=1 << 24)
     for batch in pf.iter_batches(batch_size=BATCH_ROWS, columns=features):
         yield np.column_stack(
             [col.to_numpy(zero_copy_only=False) for col in batch.columns]
@@ -135,6 +142,8 @@ class ParquetRows(lgb.Sequence):
         if k == self._cache_id:
             return self._cache
         if self._gen is None or k <= self._gen_pos:
+            if self._gen is not None:
+                self._gen.close()  # release the old reader before opening a new one
             self._gen = _batches(self.version, self.split, self.features)
             self._gen_pos = -1
         while self._gen_pos < k:
