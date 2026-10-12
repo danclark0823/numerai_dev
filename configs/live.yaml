@@ -22,3 +22,12 @@ models:
     neutralize:
       feature_set: medium
       proportion: 0.5
+
+  dc_tyndal:
+    description: >
+      Experimental diversifier (Spellmonger war-mage series). LightGBM, all
+      features, trained on target_ender_60 residualized per era against both
+      Numerai benchmarks (v53_lgbm_ender60 and _ender20). Corr with meta model
+      0.29; holdout MMC 0.0030 vs lgbm_bag4 -0.0005 (CI +0.0007..+0.0089).
+    members: [lgbm_resid_both]
+    neutralize: null

@@ -57,6 +57,10 @@ Numerai models and what they submit are defined in [configs/live.yaml](configs/l
 |---|---|
 | `lgbm_bag4` | 4 era-bagged LightGBMs on `ender_60` (CORR-focused) |
 | `dc_resid_ensemble` | benchmark-residual + teager2b_60 models, 50% neutralized (diversification) |
+| `dc_tyndal` | LightGBM on target residualized against both benchmarks (experimental diversifier) |
+
+New models are named after war mages from the *Spellmonger* series (`dc_tyndal`,
+`dc_rondal`, `dc_minalan`, ...). `configs/live.yaml` holds each one's technical description.
 
 Credentials go in `.env` (`NUMERAI_PUBLIC_ID`, `NUMERAI_SECRET_KEY`; git-ignored).
 Use an API key with only upload + read scopes, never staking.
