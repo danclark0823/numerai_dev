@@ -26,8 +26,15 @@ from numerai_dev.data import (
     load_features,
     load_index,
 )
-from numerai_dev.evaluation import BENCHMARK_COL, evaluate, flatten, prediction_correlation
+from numerai_dev.evaluation import (
+    BENCHMARK_COL,
+    META_COL,
+    evaluate,
+    flatten,
+    prediction_correlation,
+)
 from numerai_dev.experiment import ROOT, log_run
+from numerai_dev.models import RidgeModel
 from numerai_dev.splits import make_split
 from numerai_dev.targets import residualize
 
@@ -66,7 +73,7 @@ def main() -> None:
     version, target = d["version"], d["target"]
     features = feature_set(version, d["feature_set"])
 
-    if cfg["model"]["type"] != "lgbm":
+    if cfg["model"]["type"] not in ("lgbm", "ridge"):
         raise ValueError(f"unknown model type {cfg['model']['type']}")
 
     # --- training label: another target, optionally residualized against a benchmark ---
@@ -74,12 +81,13 @@ def main() -> None:
     tidx = load_index(version, "train", [train_target])
     label = train_target
     if ref := d.get("residualize_against"):
+        refs = [ref] if isinstance(ref, str) else ref
         bench = pd.read_parquet(data_path(version, "train_benchmark_models.parquet"),
-                                columns=[ref])
+                                columns=refs)
         tidx = tidx.join(bench)
-        has = tidx[[train_target, ref]].notna().all(axis=1)
+        has = tidx[[train_target, *refs]].notna().all(axis=1)
         tidx["label"] = np.nan
-        tidx.loc[has, "label"] = residualize(tidx.loc[has], train_target, ref)
+        tidx.loc[has, "label"] = residualize(tidx.loc[has], train_target, refs)
         label = "label"
         del bench
 
@@ -89,7 +97,12 @@ def main() -> None:
         tmask = era_mask(tidx, era_stride=d["era_stride"], era_offset=offset, require=[label])
         train_eras |= set(tidx.loc[tmask, "era"])
         y = tidx.loc[tmask, label].to_numpy(dtype=np.float32)
-        models.append(train_lgbm(version, features, tmask, y, cfg["model"]))
+        if cfg["model"]["type"] == "ridge":
+            x = load_features(version, "train", features, tmask)
+            models.append(RidgeModel(cfg["model"]["params"]["alpha"]).fit(x, y))
+            del x
+        else:
+            models.append(train_lgbm(version, features, tmask, y, cfg["model"]))
         print(f"offset {offset} trained at {time.time() - started:.0f}s, "
               f"peak {peak_rss_gb():.1f} GB", flush=True)
     del tidx
@@ -124,11 +137,22 @@ def main() -> None:
         results[part]["pred_corr_with_example"] = float(
             prediction_correlation(sub, pred_cols).loc["prediction", "example"]
         )
+        results[part]["pred_corr_with_benchmark"] = float(
+            prediction_correlation(sub, ["prediction", BENCHMARK_COL]).iloc[0, 1]
+        )
+        with_meta = sub.dropna(subset=[META_COL])
+        if len(with_meta):
+            results[part]["pred_corr_with_meta"] = float(
+                prediction_correlation(with_meta, ["prediction", META_COL]).iloc[0, 1]
+            )
 
     out_dir = ROOT / "artifacts" / cfg["name"]
     out_dir.mkdir(parents=True, exist_ok=True)
     for i, m in enumerate(models):
-        m.save_model(str(out_dir / f"model_{i}.txt"))
+        if isinstance(m, RidgeModel):
+            m.save(out_dir / f"model_{i}")
+        else:
+            m.save_model(str(out_dir / f"model_{i}.txt"))
     val[["era", "prediction"]].to_parquet(out_dir / "validation_preds.parquet")
 
     record = log_run(
@@ -140,6 +164,7 @@ def main() -> None:
     dev = results["dev"]["prediction"]
     print(json.dumps({k: {m: round(v[m], 4) for m in ("mean", "sharpe", "pct_positive")}
                       for k, v in dev.items()}, indent=1))
+    print({k: round(v, 3) for k, v in results["dev"].items() if k.startswith("pred_corr")})
     print(f"logged {record['name']} in {record['seconds']}s, peak {record['peak_rss_gb']} GB")
 
 

@@ -1,0 +1,16 @@
+name: ridge_all_a100
+hypothesis: >
+  A linear model (ridge, alpha=100) on all features has much lower correlation
+  with the tree-based meta model than LightGBM while keeping positive CORR,
+  raising MMC/BMC.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  era_stride: 4
+validation:
+  holdout_eras: 52
+model:
+  type: ridge
+  params:
+    alpha: 100
