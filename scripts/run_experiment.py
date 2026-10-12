@@ -99,8 +99,6 @@ def main() -> None:
     gap = embargo_for(target)
     include_val = d.get("include_validation", False)
     stream = d.get("stream", False)
-    if stream and cfg["model"]["type"] != "lgbm":
-        raise SystemExit("stream is only supported for lgbm")
     final = include_val == "all"  # production fit: every resolved era, nothing left to score
     if include_val and not final and not args.holdout:
         raise SystemExit("include_validation trains on dev eras; only --holdout can score it")
@@ -141,7 +139,8 @@ def main() -> None:
                 start += k
             print(f"offset {offset}: {x.shape}, {x.nbytes / 1e9:.1f} GB raw", flush=True)
         if cfg["model"]["type"] == "ridge":
-            models.append(RidgeModel(cfg["model"]["params"]["alpha"]).fit(x, y))
+            ridge = RidgeModel(cfg["model"]["params"]["alpha"])
+            models.append(ridge.fit_stream(x, y) if stream else ridge.fit(x, y))
         else:
             models.append(train_lgbm(x, y, cfg["model"]))
         del x, y
@@ -153,7 +152,10 @@ def main() -> None:
         out_dir = ROOT / "artifacts" / cfg["name"]
         out_dir.mkdir(parents=True, exist_ok=True)
         for i, m in enumerate(models):
-            m.save_model(str(out_dir / f"model_{i}.txt"))
+            if isinstance(m, RidgeModel):
+                m.save(out_dir / f"model_{i}")
+            else:
+                m.save_model(str(out_dir / f"model_{i}.txt"))
         record = log_run(cfg["name"], cfg, {}, started, kind="final_fit",
                          train_eras=[min(train_eras, key=era_key), max(train_eras, key=era_key),
                                      len(train_eras)],

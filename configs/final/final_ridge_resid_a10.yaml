@@ -1,0 +1,19 @@
+name: final_ridge_resid_a10
+hypothesis: >
+  Production fit of recent_ridge_resid_a10 (dc_rondal; alpha preset in round 3,
+  holdout look #3) on every resolved era of train + validation, including the
+  holdout. Ridge streams a p x p summary, so all data fits easily. Not scored.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  residualize_against: [v53_lgbm_ender60, v53_lgbm_ender20]
+  era_stride: 1
+  include_validation: all   # every resolved era incl. holdout; unscored production fit
+  stream: true
+validation:
+  holdout_eras: 52
+model:
+  type: ridge
+  params:
+    alpha: 10

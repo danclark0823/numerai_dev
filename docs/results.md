@@ -137,3 +137,25 @@ fits on 24 GB, use era bagging (stride 4 × 4 offsets) or a bigger machine.**
 
 Deployed: `lgbm_bag4` ← `final_ender60`; `dc_tyndal` ← `recent_resid_both`;
 `dc_resid_ensemble` ← `recent_resid_bench` + `recent_teager2b_60`.
+
+## Round 5: ridge on recent data → `dc_rondal` (2026-10-12)
+
+Ridge streams a 3,555 × 3,555 summary, so every era fits in memory (~10 min,
+16.6 GB true peak). Trained up to the holdout embargo, scored on the holdout
+(each run logged as a holdout look):
+
+| Model | CORR | MMC | % eras MMC>0 | Corr w/ meta |
+|---|---|---|---|---|
+| `recent_ridge_a1` | 0.0174 | 0.0102 | 87% | 0.39 |
+| `recent_ridge_a01` | 0.0159 | 0.0089 | 85% | 0.38 |
+| **`recent_ridge_resid_a10`** | 0.0199 | **0.0148** | **100%** | **0.13** |
+| `recent_ridge_resid_a1` | 0.0203 | 0.0143 | 94% | 0.23 |
+
+Holdout look #3 (vs `recent_tyndal`): ridge-resid alone MMC +0.0039
+[+0.0020, +0.0074]; 50/50 blend with Tyndal CORR 0.0210 but MMC 0.0139. Ridge
+alone deployed as **`dc_rondal`** (alpha=10 was fixed in round 3, before any
+holdout look). Elastic net considered and skipped: L1 picks arbitrarily among
+Numerai's correlated feature groups, and feature selection has not helped here.
+
+Note: `lgbm_bag4` (`final_ender60`) now scores CORR 0.165 on the holdout because
+it was trained on it. Expected; holdout scores for final_* models are meaningless.

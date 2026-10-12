@@ -13,14 +13,18 @@ import numpy as np
 import pandas as pd
 
 from numerai_dev.experiment import ROOT
+from numerai_dev.models import RidgeModel
 from numerai_dev.targets import gaussianize
 
 
-def load_members(artifact: str) -> list[lgb.Booster]:
-    paths = sorted((ROOT / "artifacts" / artifact).glob("model*.txt"))
-    if not paths:
+def load_members(artifact: str) -> list:
+    """LightGBM boosters (model_*.txt) or ridge models (model_*.npz) of an artifact."""
+    d = ROOT / "artifacts" / artifact
+    boosters = [lgb.Booster(model_file=str(p)) for p in sorted(d.glob("model*.txt"))]
+    ridges = [RidgeModel.load(p) for p in sorted(d.glob("model*.npz"))]
+    if not boosters and not ridges:
         raise FileNotFoundError(f"no saved models in artifacts/{artifact}")
-    return [lgb.Booster(model_file=str(p)) for p in paths]
+    return boosters + ridges
 
 
 def neutralize(preds: pd.Series, features: pd.DataFrame, eras: pd.Series,

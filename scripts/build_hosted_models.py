@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 import cloudpickle
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -26,9 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "artifacts" / "hosted"
 
 
-def make_predict(member_models: list[list[str]], features: list[str],
+def make_predict(member_models: list[list], features: list[str],
                  neutral_features: list[str] | None, proportion: float):
-    """Build a predict(live_features, live_benchmark_models) closure."""
+    """Build a predict(live_features, live_benchmark_models) closure. Each member is
+    a list of LightGBM model strings or of ridge (mean, beta, intercept) tuples."""
 
     boosters: list = []
 
@@ -40,14 +42,18 @@ def make_predict(member_models: list[list[str]], features: list[str],
         from scipy.stats import norm
 
         if not boosters:
-            boosters.extend(
-                [lgb.Booster(model_str=s) for s in member] for member in member_models
-            )
+            for member in member_models:
+                boosters.append([lgb.Booster(model_str=m) if isinstance(m, str) else m
+                                 for m in member])
 
         x = live_features[features].to_numpy(dtype=np.float32)
         parts = []
         for member in boosters:
-            raw = np.mean([b.predict(x) for b in member], axis=0)
+            raw = np.mean([
+                m.predict(x) if hasattr(m, "predict")
+                else (x.astype(np.float64) - m[0]) @ m[1] + m[2]  # ridge
+                for m in member
+            ], axis=0)
             r = pd.Series(raw).rank(method="average").to_numpy()
             parts.append(norm.ppf((r - 0.5) / len(r)))  # gaussianize
         ens = np.mean(parts, axis=0)
@@ -72,10 +78,14 @@ def build(cfg: dict) -> dict[str, Path]:
     OUT.mkdir(parents=True, exist_ok=True)
     paths = {}
     for model, spec in cfg["models"].items():
-        member_models = [
-            [p.read_text() for p in sorted((ROOT / "artifacts" / m).glob("model*.txt"))]
-            for m in spec["members"]
-        ]
+        member_models = []
+        for m in spec["members"]:
+            d = ROOT / "artifacts" / m
+            models = [p.read_text() for p in sorted(d.glob("model*.txt"))]
+            for p in sorted(d.glob("model*.npz")):
+                z = np.load(p)
+                models.append((z["mean"], z["beta"], float(z["intercept"])))
+            member_models.append(models)
         if not all(member_models):
             raise FileNotFoundError(f"missing saved models for {model}")
         neu = spec.get("neutralize")

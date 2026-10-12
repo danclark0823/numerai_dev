@@ -34,6 +34,36 @@ class RidgeModel:
         self.intercept = y_mean
         return self
 
+    def fit_stream(self, seqs: list, y: np.ndarray) -> RidgeModel:
+        """Same fit from row batches of sequences (e.g. ParquetRows), one pass, so
+        memory is the p x p summary rather than the data. Centering is applied
+        afterwards: X'X_c = X'X - n mu mu', X'y_c = X'y - n mu ybar."""
+        p = None
+        xtx = xty = sx = None
+        n, pos = 0, 0
+        y = y.astype(np.float64)
+        for seq in seqs:
+            for i in range(0, len(seq), self.chunk_rows):
+                xb = np.asarray(seq[i : i + self.chunk_rows], dtype=np.float64)
+                yb = y[pos : pos + len(xb)]
+                if p is None:
+                    p = xb.shape[1]
+                    xtx, xty, sx = np.zeros((p, p)), np.zeros(p), np.zeros(p)
+                xtx += xb.T @ xb
+                xty += xb.T @ yb
+                sx += xb.sum(axis=0)
+                n += len(xb)
+                pos += len(xb)
+        assert pos == len(y), "labels and streamed rows are misaligned"
+        self.mean = sx / n
+        y_mean = float(y.mean())
+        xtx -= n * np.outer(self.mean, self.mean)
+        xty -= n * self.mean * y_mean
+        xtx[np.diag_indices(p)] += self.alpha * n
+        self.beta = np.linalg.solve(xtx, xty)
+        self.intercept = y_mean
+        return self
+
     def predict(self, x: np.ndarray) -> np.ndarray:
         return (x.astype(np.float64) - self.mean) @ self.beta + self.intercept
 

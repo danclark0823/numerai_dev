@@ -38,3 +38,14 @@ def test_residualize_multiple_refs_orthogonal():
     for _, d in df.assign(r=r).groupby("era"):
         for ref in ("a", "b"):
             assert abs(np.corrcoef(d["r"], gaussianize(d[ref]))[0, 1]) < 1e-8
+
+
+def test_ridge_stream_matches_in_memory():
+    rng = np.random.default_rng(3)
+    x = rng.integers(0, 5, size=(30_000, 12)).astype(np.int8)
+    y = (x - 2) @ rng.normal(size=12) + rng.normal(size=len(x))
+    a = RidgeModel(alpha=0.5, chunk_rows=4_000).fit(x, y)
+    halves = [x[:17_000], x[17_000:]]  # list-of-arrays stands in for sequences
+    b = RidgeModel(alpha=0.5, chunk_rows=4_000).fit_stream(halves, y)
+    np.testing.assert_allclose(b.beta, a.beta, rtol=1e-8, atol=1e-10)
+    np.testing.assert_allclose(b.predict(x[:50]), a.predict(x[:50]), rtol=1e-8)

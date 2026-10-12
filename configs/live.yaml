@@ -34,3 +34,13 @@ models:
       MMC positive in 92% of holdout eras; corr with meta model 0.31.
     members: [recent_resid_both]
     neutralize: null
+
+  dc_rondal:
+    description: >
+      Independent diversifier (Spellmonger war-mage series). Ridge regression
+      (alpha=10), all features, trained on target_ender_60 residualized per era
+      against both Numerai benchmarks, on every resolved era (final_ridge_resid_a10).
+      Same settings as recent_ridge_resid_a10: holdout CORR 0.0199, MMC 0.0148,
+      MMC positive in 52/52 holdout eras; corr with meta model 0.13.
+    members: [final_ridge_resid_a10]
+    neutralize: null

@@ -1,0 +1,18 @@
+name: recent_ridge_a1
+hypothesis: >
+  Ridge (alpha=1), trained on every
+  era of train + validation up to the holdout embargo, adds MMC beyond dc_tyndal,
+  alone or blended 50/50 with it.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  era_stride: 1
+  include_validation: true
+  stream: true
+validation:
+  holdout_eras: 52
+model:
+  type: ridge
+  params:
+    alpha: 1

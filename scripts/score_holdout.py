@@ -33,10 +33,10 @@ HOLDOUT_ERAS = 52
 
 # Live models plus candidates under evaluation.
 CANDIDATES = {
-    "recent_bag4": {"members": ["recent_ender60"], "neutralize": None},
-    "recent_resid_ensemble": {"members": ["recent_resid_bench", "recent_teager2b_60"],
-                              "neutralize": {"feature_set": "medium", "proportion": 0.5}},
     "recent_tyndal": {"members": ["recent_resid_both"], "neutralize": None},
+    "rondal": {"members": ["recent_ridge_resid_a10"], "neutralize": None},
+    "rondal_tyndal_blend": {"members": ["recent_ridge_resid_a10", "recent_resid_both"],
+                            "neutralize": None},
 }
 
 
