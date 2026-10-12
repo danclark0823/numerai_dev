@@ -19,7 +19,9 @@ import pandas as pd
 import yaml
 
 from numerai_dev.data import (
+    ParquetRows,
     data_path,
+    era_key,
     era_mask,
     feature_set,
     iter_features,
@@ -35,7 +37,7 @@ from numerai_dev.evaluation import (
 )
 from numerai_dev.experiment import ROOT, log_run
 from numerai_dev.models import RidgeModel
-from numerai_dev.splits import make_split
+from numerai_dev.splits import assert_no_overlap, embargo_for, make_split
 from numerai_dev.targets import residualize
 
 
@@ -45,10 +47,7 @@ def peak_rss_gb() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale / 1e9
 
 
-def train_lgbm(version: str, features: list[str], mask: np.ndarray, y: np.ndarray,
-               model_cfg: dict) -> lgb.Booster:
-    x = load_features(version, "train", features, mask)
-    print(f"train: {x.shape}, {x.nbytes / 1e9:.1f} GB raw", flush=True)
+def train_lgbm(x: np.ndarray, y: np.ndarray, model_cfg: dict) -> lgb.Booster:
     params = {"objective": "regression", **model_cfg["params"]}
     num_rounds = params.pop("n_estimators")
     # Bin into LightGBM's compact format, then free the raw int8 matrix before training.
@@ -59,6 +58,22 @@ def train_lgbm(version: str, features: list[str], mask: np.ndarray, y: np.ndarra
     del ds
     gc.collect()
     return model
+
+
+def label_frame(version: str, split: str, train_target: str, refs: list[str]) -> pd.DataFrame:
+    """Index frame for a split with a `label` column: the training target, or its
+    per-era residual against benchmark predictions when `refs` is given."""
+    idx = load_index(version, split, [train_target])
+    if not refs:
+        idx["label"] = idx[train_target]
+        return idx
+    bench = pd.read_parquet(data_path(version, f"{split}_benchmark_models.parquet"),
+                            columns=refs)
+    idx = idx.join(bench)
+    has = idx[[train_target, *refs]].notna().all(axis=1)
+    idx["label"] = np.nan
+    idx.loc[has, "label"] = residualize(idx.loc[has], train_target, refs)
+    return idx
 
 
 def main() -> None:
@@ -76,41 +91,67 @@ def main() -> None:
     if cfg["model"]["type"] not in ("lgbm", "ridge"):
         raise ValueError(f"unknown model type {cfg['model']['type']}")
 
-    # --- training label: another target, optionally residualized against a benchmark ---
+    # --- holdout boundary (fixed by the validation file, independent of training) ---
+    vidx = load_index(version, "validation", [target])
+    resolved_eras = sorted(vidx.loc[era_mask(vidx, require=[target], data_type="validation"),
+                                    "era"].unique(), key=era_key)
+    holdout = resolved_eras[-cfg["validation"]["holdout_eras"]:]
+    gap = embargo_for(target)
+    include_val = d.get("include_validation", False)
+    stream = d.get("stream", False)
+    if stream and cfg["model"]["type"] != "lgbm":
+        raise SystemExit("stream is only supported for lgbm")
+    if include_val and not args.holdout:
+        raise SystemExit("include_validation trains on dev eras; only --holdout can score it")
+
+    # --- training rows: train eras, plus validation eras up to the holdout embargo ---
     train_target = d.get("train_target", target)
-    tidx = load_index(version, "train", [train_target])
-    label = train_target
-    if ref := d.get("residualize_against"):
-        refs = [ref] if isinstance(ref, str) else ref
-        bench = pd.read_parquet(data_path(version, "train_benchmark_models.parquet"),
-                                columns=refs)
-        tidx = tidx.join(bench)
-        has = tidx[[train_target, *refs]].notna().all(axis=1)
-        tidx["label"] = np.nan
-        tidx.loc[has, "label"] = residualize(tidx.loc[has], train_target, refs)
-        label = "label"
-        del bench
+    ref = d.get("residualize_against")
+    refs = [] if not ref else ([ref] if isinstance(ref, str) else list(ref))
+    parts = [("train", label_frame(version, "train", train_target, refs), None)]
+    if include_val:
+        last_ok = era_key(holdout[0]) - gap - 1
+        allowed = [e for e in resolved_eras if era_key(e) <= last_ok]
+        parts.append(("validation", label_frame(version, "validation", train_target, refs),
+                      allowed))
 
     # --- train: one model per era offset, averaged (all data at constant memory) ---
     models, train_eras = [], set()
     for offset in d.get("era_offsets", [0]):
-        tmask = era_mask(tidx, era_stride=d["era_stride"], era_offset=offset, require=[label])
-        train_eras |= set(tidx.loc[tmask, "era"])
-        y = tidx.loc[tmask, label].to_numpy(dtype=np.float32)
-        if cfg["model"]["type"] == "ridge":
-            x = load_features(version, "train", features, tmask)
-            models.append(RidgeModel(cfg["model"]["params"]["alpha"]).fit(x, y))
-            del x
+        masks = [era_mask(f, era_stride=d["era_stride"], era_offset=offset, eras=allowed,
+                          require=["label"], data_type="validation" if s == "validation" else None)
+                 for s, f, allowed in parts]
+        n = [int(m.sum()) for m in masks]
+        ys = [frame.loc[m, "label"].to_numpy(dtype=np.float32)
+              for (_, frame, _), m in zip(parts, masks, strict=True)]
+        for (_, frame, _), m in zip(parts, masks, strict=True):
+            train_eras |= set(frame.loc[m, "era"])
+        y = np.concatenate(ys)
+        if stream:
+            # No raw matrix: LightGBM bins rows streamed from parquet (~half the memory).
+            x = [ParquetRows(version, split_name, features, m)
+                 for (split_name, _, _), m in zip(parts, masks, strict=True)]
+            print(f"offset {offset}: {sum(n):,} rows streamed", flush=True)
         else:
-            models.append(train_lgbm(version, features, tmask, y, cfg["model"]))
+            x = np.empty((sum(n), len(features)), dtype=np.int8)
+            start = 0
+            for (split_name, _, _), m, k in zip(parts, masks, n, strict=True):
+                load_features(version, split_name, features, m, out=x[start:start + k])
+                start += k
+            print(f"offset {offset}: {x.shape}, {x.nbytes / 1e9:.1f} GB raw", flush=True)
+        if cfg["model"]["type"] == "ridge":
+            models.append(RidgeModel(cfg["model"]["params"]["alpha"]).fit(x, y))
+        else:
+            models.append(train_lgbm(x, y, cfg["model"]))
+        del x, y
+        gc.collect()
         print(f"offset {offset} trained at {time.time() - started:.0f}s, "
               f"peak {peak_rss_gb():.1f} GB", flush=True)
-    del tidx
+    del parts
+    assert_no_overlap(sorted(train_eras, key=era_key), holdout, gap)
 
     # --- predict validation in batches ---
-    vidx = load_index(version, "validation", [target])
-    resolved = era_mask(vidx, require=[target], data_type="validation")
-    split = make_split(train_eras, vidx.loc[resolved, "era"].unique().tolist(), target,
+    split = make_split(sorted(train_eras, key=era_key), resolved_eras, target,
                        cfg["validation"]["holdout_eras"])
     scored_eras = split.dev + (split.holdout if args.holdout else [])
     vmask = era_mask(vidx, eras=scored_eras, require=[target], data_type="validation")
@@ -131,7 +172,10 @@ def main() -> None:
 
     pred_cols = ["prediction", "example"]
     results = {}
-    for part, eras in [("dev", split.dev)] + ([("holdout", split.holdout)] if args.holdout else []):
+    parts_to_score = [("dev", split.dev)] if split.dev else []
+    if args.holdout:
+        parts_to_score.append(("holdout", split.holdout))
+    for part, eras in parts_to_score:
         sub = val[val["era"].isin(eras)]
         results[part] = evaluate(sub, pred_cols, target)
         results[part]["pred_corr_with_example"] = float(
@@ -157,14 +201,14 @@ def main() -> None:
 
     record = log_run(
         cfg["name"], cfg, flatten(results), started,
-        dev_eras=[split.dev[0], split.dev[-1], len(split.dev)],
+        dev_eras=[split.dev[0], split.dev[-1], len(split.dev)] if split.dev else None,
         holdout_scored=args.holdout,
         peak_rss_gb=round(peak_rss_gb(), 2),
     )
-    dev = results["dev"]["prediction"]
-    print(json.dumps({k: {m: round(v[m], 4) for m in ("mean", "sharpe", "pct_positive")}
-                      for k, v in dev.items()}, indent=1))
-    print({k: round(v, 3) for k, v in results["dev"].items() if k.startswith("pred_corr")})
+    for part, res in results.items():
+        print(part, json.dumps({k: {m: round(v[m], 4) for m in ("mean", "sharpe", "pct_positive")}
+                                for k, v in res["prediction"].items()}, indent=1))
+        print({k: round(v, 3) for k, v in res.items() if k.startswith("pred_corr")})
     print(f"logged {record['name']} in {record['seconds']}s, peak {record['peak_rss_gb']} GB")
 
 

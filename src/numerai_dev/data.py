@@ -10,6 +10,7 @@ import json
 from collections.abc import Iterator
 from pathlib import Path
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
@@ -78,10 +79,13 @@ def _batches(version: str, split: str, features: list[str]) -> Iterator[np.ndarr
 
 
 def load_features(
-    version: str, split: str, features: list[str], mask: np.ndarray
+    version: str, split: str, features: list[str], mask: np.ndarray,
+    out: np.ndarray | None = None,
 ) -> np.ndarray:
-    """int8 array of shape (mask.sum(), len(features)) for the masked rows."""
-    out = np.empty((int(mask.sum()), len(features)), dtype=np.int8)
+    """int8 array of shape (mask.sum(), len(features)) for the masked rows.
+    Pass `out` (e.g. a slice of a bigger preallocated array) to fill in place."""
+    if out is None:
+        out = np.empty((int(mask.sum()), len(features)), dtype=np.int8)
     row = pos = 0
     for x in _batches(version, split, features):
         m = mask[row : row + len(x)]
@@ -104,3 +108,61 @@ def iter_features(
         if m.any():
             yield np.flatnonzero(m) + row, x[m]
         row += len(x)
+
+
+class ParquetRows(lgb.Sequence):
+    """LightGBM `Sequence` over the masked rows of a parquet split, streamed one
+    file batch at a time. LightGBM reads rows in increasing order (sampling, then
+    construction), so only the current batch is ever held: the binned Dataset is
+    built without materializing the raw feature matrix."""
+
+    def __init__(self, version: str, split: str, features: list[str], mask: np.ndarray,
+                 batch_size: int = BATCH_ROWS):
+        self.version, self.split, self.features, self.mask = version, split, features, mask
+        self.batch_size = batch_size  # rows per range read requested by LightGBM
+        n_batches = -(-len(mask) // BATCH_ROWS)
+        counts = [int(mask[i * BATCH_ROWS:(i + 1) * BATCH_ROWS].sum()) for i in range(n_batches)]
+        self.cum = np.concatenate([[0], np.cumsum(counts)])
+        self._gen: Iterator[np.ndarray] | None = None
+        self._gen_pos = -1
+        self._cache_id = -1
+        self._cache: np.ndarray | None = None
+
+    def __len__(self) -> int:
+        return int(self.cum[-1])
+
+    def _chunk(self, k: int) -> np.ndarray:
+        if k == self._cache_id:
+            return self._cache
+        if self._gen is None or k <= self._gen_pos:
+            self._gen = _batches(self.version, self.split, self.features)
+            self._gen_pos = -1
+        while self._gen_pos < k:
+            x = next(self._gen)
+            self._gen_pos += 1
+        expected = len(self.mask[k * BATCH_ROWS:(k + 1) * BATCH_ROWS])
+        assert len(x) == expected, "parquet batches not aligned to BATCH_ROWS"
+        self._cache = x[self.mask[k * BATCH_ROWS:(k + 1) * BATCH_ROWS]]
+        self._cache_id = k
+        return self._cache
+
+    def _locate(self, i: int) -> int:
+        return int(np.searchsorted(self.cum, i, side="right")) - 1
+
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            start, stop, _ = idx.indices(len(self))
+            pieces, i = [], start
+            while i < stop:
+                k = self._locate(i)
+                chunk = self._chunk(k)
+                lo = i - self.cum[k]
+                hi = min(stop - self.cum[k], len(chunk))
+                pieces.append(chunk[lo:hi])
+                i += hi - lo
+            # LightGBM pushes float rows; converting per batch keeps the cache int8.
+            if not pieces:
+                return np.empty((0, len(self.features)), np.float32)
+            return np.concatenate(pieces).astype(np.float32)
+        k = self._locate(int(idx))
+        return self._chunk(k)[int(idx) - self.cum[k]].astype(np.float64)  # sampling needs double

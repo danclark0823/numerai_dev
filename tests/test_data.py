@@ -38,3 +38,17 @@ def test_iter_features_covers_mask(tmp_path, monkeypatch):
                                                                  ["feature_a"], mask)])
     np.testing.assert_array_equal(rows, np.flatnonzero(mask))
     assert len(rows) == (df["era"].isin(["0002", "0009"])).sum()
+
+
+def test_parquet_rows_matches_load_features(tmp_path, monkeypatch):
+    write_fake(tmp_path, monkeypatch)
+    idx = data.load_index("vX", "validation", ["target_x_20"])
+    mask = data.era_mask(idx, era_stride=2, require=["target_x_20"])
+    feats = ["feature_a", "feature_b"]
+    full = data.load_features("vX", "validation", feats, mask)
+    seq = data.ParquetRows("vX", "validation", feats, mask, batch_size=5_000)
+    assert len(seq) == len(full)
+    np.testing.assert_array_equal(seq[0:len(seq)], full)
+    for i in [0, 1, 6_999, 7_000, 12_345, len(full) - 1]:  # monotonic random access
+        np.testing.assert_array_equal(seq[i], full[i])
+    np.testing.assert_array_equal(seq[100:20_000], full[100:20_000])  # restarts stream

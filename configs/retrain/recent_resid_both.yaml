@@ -1,0 +1,24 @@
+name: recent_resid_both
+hypothesis: >
+  Replacement for dc_tyndal. Trained on every era of train + validation up to the holdout embargo
+  (no era striding). Recent data restores holdout CORR lost by train-only models.
+data:
+  version: v5.3
+  feature_set: all
+  target: target_ender_60
+  residualize_against: [v53_lgbm_ender60, v53_lgbm_ender20]
+  era_stride: 1
+  include_validation: true
+  stream: true
+validation:
+  holdout_eras: 52
+model:
+  type: lgbm
+  params:
+    n_estimators: 2000
+    learning_rate: 0.01
+    max_depth: 5
+    num_leaves: 31
+    colsample_bytree: 0.1
+    random_state: 42
+    verbose: -1
