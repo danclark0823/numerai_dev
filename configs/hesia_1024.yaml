@@ -1,0 +1,17 @@
+# Completed and shelved: positive MMC, but below matched all-feature ridge;
+# no CORR wins in three windows. See docs/hesia.md. Preserve the completed output.
+name: dc_hesia_1024_v1
+baseline: dc_wenek_1024_v1
+seed: 42
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: all
+  train_rows_per_era: 1024
+  train_stride: 4
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+alpha: 10
+partitions: 2
+groups_per_partition: 8

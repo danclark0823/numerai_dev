@@ -104,5 +104,21 @@ experiments/    log.jsonl, the append-only record of every run
 
 ## Roadmap
 
+The experimental three-model diversifier slate and its nested chronological
+evaluation runner are documented in [docs/diversifiers.md](docs/diversifiers.md).
+The fifth-model ridge-plus-interaction experiment, **dc_wenek**, is documented in
+[docs/wenek.md](docs/wenek.md), with its frozen design in [docs/wenek_plan.md](docs/wenek_plan.md).
+Wenek is now shelved after its simplification test. The next candidate,
+**dc_bendonal**, is now [implemented and evaluated](docs/bendonal.md). It improved
+on ridge in all three development windows but failed the nonnegative-MMC screen;
+the [original plan](docs/bendonal_plan.md) and results are retained for audit.
+The subsequent covariance-stability experiment, **dc_alscot**, is
+[implemented and evaluated](docs/alscot.md). Its inner-selected penalty worsened
+CORR in every outer window and worsened MMC, so this formulation is also shelved.
+The full-feature specialist ensemble, **dc_hesia**, is
+[implemented and evaluated](docs/hesia.md). It achieved positive MMC but lost to
+matched all-feature ridge, so it is shelved. Broader feature coverage substantially
+improved the ridge control compared with the earlier 128-feature experiments.
+
 See [docs/plan.md](docs/plan.md). Next up: target ensembles and feature
 neutralization to raise MMC, then automated live submissions (unstaked).

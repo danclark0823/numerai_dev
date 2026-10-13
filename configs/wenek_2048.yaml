@@ -1,0 +1,26 @@
+# Run only after the predefined screen in docs/wenek_plan.md passes at 1024.
+# NOT RUN: the 1,024-row baseline and subsequent simplifications failed the screen.
+# Retained as an unexecuted historical plan, not the next recommended experiment.
+name: dc_wenek_2048_v1
+seed: 42
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: medium
+  feature_limit: 128
+  train_rows_per_era: 2048
+  train_stride: 4
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+ridge_alpha: 10
+crossfit:
+  min_train_eras: 40
+  block_eras: 32
+factorization_machine:
+  rank: 8
+  epochs: 8
+  batch_size: 1024
+  learning_rate: 0.003
+  penalty: 0.01
+teacher_trees: 80

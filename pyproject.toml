@@ -13,6 +13,8 @@ dependencies = [
     "pyyaml",
     "numerapi",
     "numerai-tools",
+    "joblib",
+    "threadpoolctl",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,11 @@
+# COMPLETED; neither simplification passed. Each had positive contribution beyond
+# ridge in only 1/3 windows. Shelved despite penalty=0.1 reaching MMC +0.00401.
+# Lower rank did not help; stronger regularization reduced losses but not enough
+# to establish stable incremental value. See docs/wenek.md; no deployment.
+name: dc_wenek_simplify_v1
+baseline: dc_wenek_1024_v1
+variants:
+  rank2:
+    rank: 2
+  penalty01:
+    penalty: 0.1

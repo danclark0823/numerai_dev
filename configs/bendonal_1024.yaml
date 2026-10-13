@@ -1,0 +1,26 @@
+# Shelved research configuration; not selected as the fifth live model.
+# Tested independent nonlinear five-bin curves with curvature penalties 10 / 100
+# and fixed linear penalty 10 against matched ridge, using three embargoed windows.
+# Both improved CORR and contributed beyond ridge in all three windows. However,
+# MMC was -0.002517 / -0.004171 (ridge: -0.004378), failing the predefined
+# nonnegative-MMC gate despite the relative improvement. MMC covered only the
+# latest 30 eras, and reused development windows are not fresh confirmation.
+# No scale-up, further tuning, final refit, hosted package, or deployment followed.
+# See docs/bendonal.md; the existing output directory must not be overwritten.
+name: dc_bendonal_1024_v1
+baseline: dc_wenek_1024_v1
+seed: 42
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: medium
+  feature_limit: 128
+  train_rows_per_era: 1024
+  train_stride: 4
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+linear_penalty: 10
+candidates:
+  additive10: 10
+  additive100: 100

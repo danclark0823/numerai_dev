@@ -1,0 +1,20 @@
+# Completed and shelved: inner-selected stability penalty lost to ridge in all
+# three outer windows and worsened MMC. See docs/alscot.md. Do not overwrite run.
+name: dc_alscot_1024_v1
+baseline: dc_wenek_1024_v1
+seed: 42
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: medium
+  feature_limit: 128
+  train_rows_per_era: 1024
+  train_stride: 4
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+alpha: 10
+block_eras: 52
+inner_eras: 52
+inner_folds: 3
+strengths: [0, 1, 10, 100]

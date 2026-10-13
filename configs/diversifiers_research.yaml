@@ -1,0 +1,33 @@
+name: diversifiers_research_v1
+seed: 42
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: medium
+  feature_limit: 128
+  rows_per_era: 256
+  train_stride: 4
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+crossfit:
+  min_train_eras: 40
+  block_eras: 32
+  trees: 80
+portfolio:
+  top_k: 20
+  min_consistency: 0.75
+  blocks: 8
+  max_exposure: 0.5
+factorization_machine:
+  rank: 8
+  epochs: 8
+  batch_size: 1024
+  learning_rate: 0.003
+  penalty: 0.01
+anti_consensus:
+  n_estimators: 200
+  max_depth: 3
+  num_leaves: 7
+  learning_rate: 0.03
+  min_child_samples: 100
