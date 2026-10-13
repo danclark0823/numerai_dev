@@ -119,6 +119,14 @@ The full-feature specialist ensemble, **dc_hesia**, is
 [implemented and evaluated](docs/hesia.md). It achieved positive MMC but lost to
 matched all-feature ridge, so it is shelved. Broader feature coverage substantially
 improved the ridge control compared with the earlier 128-feature experiments.
+The recency-weighted residual ridge, **dc_taren**, is
+[implemented and evaluated](docs/taren.md) on full data against a walk-forward
+recreation of dc_rondal ([plan](docs/taren_plan.md)). Nested selection chose no
+decay in every fold, so it is shelved; the Rondal recreation scored CORR 0.024 and
+MMC 0.011 on the development windows. The alternate-target residual ridge,
+**dc_azar** (a separate model; [plan](docs/azar_plan.md)), was also
+[shelved](docs/azar.md): its inner-selected target changed every fold and
+contributed negatively beyond Rondal in all three windows.
 
 See [docs/plan.md](docs/plan.md). Next up: target ensembles and feature
 neutralization to raise MMC, then automated live submissions (unstaked).

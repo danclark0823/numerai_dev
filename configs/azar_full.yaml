@@ -1,0 +1,21 @@
+# Completed and shelved: inner-selected targets (tyler, rowan, delta) contributed
+# negatively beyond the Rondal recreation in all windows; MMC -0.0013. See
+# docs/azar.md. Live dc_rondal untouched. Preserve the output; copy to revise.
+name: dc_azar_full_v1
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: all
+  residualize_against: [v53_lgbm_ender60, v53_lgbm_ender20]
+  candidate_targets: [target_agnes_60, target_alpha_60, target_bravo_60,
+                      target_caroline_60, target_charlie_60, target_claudia_60,
+                      target_cyrusd_60, target_delta_60, target_echo_60, target_ender_60,
+                      target_jasper_60, target_ralph_60, target_rowan_60, target_sam_60,
+                      target_teager2b_60, target_tyler_60, target_victor_60,
+                      target_waldo_60, target_xerxes_60]
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+alpha: 10
+inner_eras: 52
+inner_folds: 3

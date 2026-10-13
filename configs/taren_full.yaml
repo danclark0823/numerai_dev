@@ -1,0 +1,17 @@
+# Completed and shelved: inner selection chose h=inf in all three folds, so Taren
+# equals the walk-forward Rondal control. See docs/taren.md. Preserve the output;
+# copy to a new name for any explicitly revised replication.
+name: dc_taren_full_v1
+data:
+  version: v5.3
+  target: target_ender_60
+  feature_set: all
+  residualize_against: [v53_lgbm_ender60, v53_lgbm_ender20]
+holdout_eras: 52
+test_starts: [850, 1000, 1133]
+test_eras: 30
+alpha: 10
+half_lives: [52, 104, 208, 416, .inf]
+inner_eras: 52
+inner_folds: 3
+corr_tolerance: 0.002
