@@ -78,8 +78,21 @@ from numerai_dev.wenek import paired_block_ci
 RECIPE = {"objective": "regression", "n_estimators": 2000, "learning_rate": 0.01,
           "max_depth": 5, "num_leaves": 31, "colsample_bytree": 0.1, "random_state": 42}
 PARITY_ROWS = 512
-SMOKE = {"name": "dc_mavone_smoke_v1", "features": 64, "n_estimators": 20,
+# dc_mavone_smoke_v1 is a legacy (pre-provenance v2) run and cannot be resumed.
+SMOKE = {"name": "dc_mavone_smoke_v2", "features": 64, "n_estimators": 20,
          "blocks": [1133, 1211]}
+PROVENANCE_VERSION = 2
+# Code whose behaviour determines fitted models, predictions and scores.
+IMPLEMENTATION = ["scripts/run_mavone.py", "scripts/run_experiment.py", "scripts/run_wenek.py",
+                  "src/numerai_dev/mavone.py", "src/numerai_dev/data.py",
+                  "src/numerai_dev/evaluation.py", "src/numerai_dev/azar.py",
+                  "src/numerai_dev/targets.py", "src/numerai_dev/live.py",
+                  "src/numerai_dev/wenek.py"]
+DATASET_FILES = ["features.json", "train.parquet", "validation.parquet",
+                 "train_benchmark_models.parquet", "validation_benchmark_models.parquet",
+                 "meta_model.parquet"]
+IDENTITY_KEYS = ["config", "feature_order_sha256", "implementation_sha256", "dataset_sha256"]
+COMPLETED = {"forward_complete", "complete"}
 SOURCES = ["scripts/run_mavone.py", "src/numerai_dev/mavone.py", "src/numerai_dev/data.py",
            "src/numerai_dev/evaluation.py", "src/numerai_dev/azar.py",
            "src/numerai_dev/targets.py", "src/numerai_dev/live.py",
@@ -126,6 +139,95 @@ def smoke_cfg(cfg):
     cfg["name"] = SMOKE["name"]
     cfg["lgbm"]["n_estimators"] = SMOKE["n_estimators"]
     return cfg
+
+
+class ProvenanceError(RuntimeError):
+    """A run's recorded identity does not match what would be used now."""
+
+    def __init__(self, out: Path, problem: str):
+        super().__init__(f"{out.name}: {problem}. Existing artifacts were left unchanged; set "
+                         "a new `name` in the config to start a fresh run.")
+
+
+def run_features(cfg, smoke=False) -> list[str]:
+    features = feature_set(cfg["data"]["version"], cfg["data"]["feature_set"])
+    return features[:SMOKE["features"]] if smoke else features
+
+
+def current_identity(cfg, features, root: Path = ROOT, data_dir: Path | None = None) -> dict:
+    """Identities a run must keep: config, feature order, implementation and dataset files."""
+    data_dir = data_dir or DATA_DIR / cfg["data"]["version"]
+    return {"config": cfg, "feature_order_sha256": ids_hash(features),
+            "implementation_sha256": {p: digest(root / p) for p in IMPLEMENTATION},
+            "dataset_sha256": {f: digest(data_dir / f) for f in DATASET_FILES}}
+
+
+def check_identity(out: Path, manifest: dict, expected: dict):
+    """Raise ProvenanceError for a legacy manifest or any identity mismatch."""
+    missing = [k for k in ["provenance_version", *IDENTITY_KEYS] if k not in manifest]
+    if missing or manifest.get("provenance_version") != PROVENANCE_VERSION:
+        raise ProvenanceError(out, "legacy manifest without the recorded provenance needed "
+                                   f"for resume or evaluation (missing {missing}); its "
+                                   "sources/ snapshot is its reproduction reference")
+    diffs = []
+    for key in IDENTITY_KEYS:
+        recorded, now = manifest[key], expected[key]
+        if isinstance(now, dict) and key != "config":
+            changed = sorted(k for k in set(recorded) | set(now) if recorded.get(k) != now.get(k))
+            if changed:
+                diffs.append(f"{key} differs for {changed}")
+        elif recorded != now:
+            diffs.append(f"{key} differs")
+    if diffs:
+        raise ProvenanceError(out, "; ".join(diffs))
+
+
+def verify_blocks(out: Path, manifest: dict):
+    """Completed blocks' saved predictions and models must match their recorded hashes."""
+    for key, audit in manifest.get("completed_blocks", {}).items():
+        bdir = out / "blocks" / key
+        files = {"preds.parquet": audit["preds_sha256"],
+                 **{f"{n}.txt": h for n, h in audit["model_sha256"].items()}}
+        for name, recorded in files.items():
+            path = bdir / name
+            if not path.exists():
+                raise ProvenanceError(out, f"block {key} is missing {name}")
+            if digest(path) != recorded:
+                raise ProvenanceError(out, f"block {key} {name} does not match its recorded hash")
+
+
+def open_for_forward(out: Path, expected: dict, resume: bool) -> dict | None:
+    """Existing manifest to continue (verified, unmodified), or None for a new run."""
+    path = out / "manifest.json"
+    if not path.exists():
+        if out.exists():
+            raise ProvenanceError(out, "directory exists without a manifest")
+        return None
+    manifest = json.loads(path.read_text())
+    if manifest.get("status") in COMPLETED:
+        raise ProvenanceError(out, f"run is already {manifest['status']}; completed runs are "
+                                   "never reopened")
+    if not resume:
+        raise ProvenanceError(out, "run exists; pass --resume to continue it")
+    check_identity(out, manifest, expected)
+    verify_blocks(out, manifest)
+    return manifest
+
+
+def open_for_evaluation(out: Path, expected: dict) -> dict:
+    path = out / "manifest.json"
+    if not path.exists():
+        raise ProvenanceError(out, "no training manifest")
+    manifest = json.loads(path.read_text())
+    check_identity(out, manifest, expected)
+    if manifest.get("status") != "forward_complete":
+        raise ProvenanceError(out, f"forward predictions are {manifest.get('status')}, "
+                                   "not forward_complete")
+    if (out / "evaluation").exists():
+        raise ProvenanceError(out, "evaluation already exists; completed evaluations are "
+                                   "never overwritten")
+    verify_blocks(out, manifest)
+    return manifest
 
 
 def environment():
@@ -438,7 +540,8 @@ def load_frames(cfg):
                                 columns=refs)
         n = len(f)
         f = f.join(bench, how="left")
-        assert len(f) == n and not f.index.has_duplicates
+        if len(f) != n or f.index.has_duplicates:
+            raise ValueError(f"{split}: benchmark join changed or duplicated rows")
         f["era_n"] = f.era.map(era_key)
         f["eligible"] = f.data_type.isin(["train", "validation"]).to_numpy()
         has = (f[[ender, *refs]].notna().all(axis=1) & f.eligible).to_numpy()
@@ -474,8 +577,12 @@ def fit_block(cfg, features, frames, block, out_dir):
         eras.append(f.era_n.to_numpy()[m])
     y, r, eras = np.vstack(ys), np.concatenate(resid), np.concatenate(eras)
     ids = np.concatenate([np.asarray(i) for i in ids])
-    assert np.isfinite(y).all() and eras.max() <= block["fit_end"] < block["start"] - 13
-    assert (eras % t["stride"] == t["anchor"] % t["stride"]).all()
+    if not np.isfinite(y).all():
+        raise ValueError("non-finite training labels")
+    if not eras.max() <= block["fit_end"] < block["start"] - 13:
+        raise ValueError(f"block {block['start']}: training eras violate the maturity gap")
+    if not (eras % t["stride"] == t["anchor"] % t["stride"]).all():
+        raise ValueError("training eras off the global stride")
     w = np.isfinite(r).astype(np.float64)
     r = np.where(np.isfinite(r), r, 0.0)
     pd.concat(excl).to_csv(out_dir / "exclusions_by_era.csv")
@@ -531,26 +638,20 @@ def run_forward(cfg, resume=False, smoke=False):
     if smoke:
         cfg = smoke_cfg(cfg)
     version = cfg["data"]["version"]
-    features = feature_set(version, cfg["data"]["feature_set"])
-    if smoke:
-        features = features[:SMOKE["features"]]
+    features = run_features(cfg, smoke)
     s = cfg["schedule"]
     blocks = block_schedule(s["first_block_start"], s["last_block_start"], s["block_eras"], s["gap"])
     if smoke:
         blocks = [b for b in blocks if b["start"] in SMOKE["blocks"]]
     out = ROOT / "artifacts" / cfg["name"]
-    if (out / "manifest.json").exists():
-        manifest = json.loads((out / "manifest.json").read_text())
-        if not resume or manifest["config"] != cfg:
-            raise FileExistsError(f"{out} exists; use --resume with an identical config")
-        if manifest["status"] == "complete":
-            raise FileExistsError(f"{out} is complete; never overwrite a completed run")
-    else:
+    identity = current_identity(cfg, features)
+    manifest = open_for_forward(out, identity, resume)
+    if manifest is None:
         out.mkdir(exist_ok=False)
         (out / "sources").mkdir()
         for p in SOURCES:
             shutil.copy2(ROOT / p, out / "sources" / Path(p).name)
-        manifest = {"config": cfg, "features": features, "feature_order_sha256": ids_hash(features),
+        manifest = {"provenance_version": PROVENANCE_VERSION, **identity, "features": features,
                     "git": git_hash(), "blocks": blocks, "environment": environment(),
                     "metadata_sha256": digest(data_path(version, "features.json")),
                     "source_hashes": {p: digest(ROOT / p) for p in SOURCES},
@@ -585,7 +686,8 @@ def run_forward(cfg, resume=False, smoke=False):
                 booster.save_model(str(path))
                 hashes[name] = digest(path)
             preds, (px, ppos) = predict_block(cfg, features, frames["validation"], block, boosters)
-            assert np.isfinite(preds[list(boosters)].to_numpy()).all()
+            if not np.isfinite(preds[list(boosters)].to_numpy()).all():
+                raise ValueError(f"block {key}: non-finite predictions")
             for name in boosters:
                 loaded = lgb.Booster(model_file=str(bdir / f"{name}.txt"))
                 pid = frames["validation"].index[ppos]
@@ -653,10 +755,8 @@ def run_evaluate(cfg, smoke=False):
         cfg = smoke_cfg(cfg)
     version, target = cfg["data"]["version"], cfg["data"]["scoring_target"]
     out = ROOT / "artifacts" / cfg["name"]
-    manifest = json.loads((out / "manifest.json").read_text())
+    manifest = open_for_evaluation(out, current_identity(cfg, run_features(cfg, smoke)))
     blocks = manifest["blocks"]
-    if not smoke and manifest["status"] != "forward_complete":
-        raise RuntimeError("forward predictions are incomplete")
     ev = out / "evaluation"
     ev.mkdir(exist_ok=False)
     before = production_snapshot()
@@ -666,7 +766,6 @@ def run_evaluate(cfg, smoke=False):
     for b in blocks:
         audit = manifest["completed_blocks"][str(b["start"])]
         path = out / "blocks" / str(b["start"]) / "preds.parquet"
-        assert digest(path) == audit["preds_sha256"], "prediction artifact changed"
         p = pd.read_parquet(path)
         p["preds_sha256"] = audit["preds_sha256"]
         parts.append(p)
@@ -684,8 +783,10 @@ def run_evaluate(cfg, smoke=False):
     preds["era_n"] = val.loc[expected, "era_n"]
     for start, b in starts.items():
         sel = preds.block_start.eq(start)
-        assert preds.loc[sel, "era_n"].between(b["start"], b["end"]).all()
-        assert (preds.loc[sel, "fit_end"] < b["start"] - 13).all()
+        if not preds.loc[sel, "era_n"].between(b["start"], b["end"]).all():
+            raise ValueError(f"block {start}: predictions outside the block's eras")
+        if not (preds.loc[sel, "fit_end"] < b["start"] - 13).all():
+            raise ValueError(f"block {start}: fit endpoint violates the maturity gap")
     medium = feature_set(version, cfg["control"]["neutralize"]["feature_set"])
     xm = pd.DataFrame(load_features(version, "validation", medium, in_blocks),
                       index=expected, columns=medium)
@@ -703,13 +804,16 @@ def run_evaluate(cfg, smoke=False):
                             columns=[BENCHMARK_COL])
     n = len(full)
     full = full.join(meta, how="left").join(bench, how="left")
-    assert len(full) == n
+    if len(full) != n:
+        raise ValueError("meta/benchmark join changed the row universe")
     resolved = full[target].notna() & val.loc[full.index, "data_type"].eq("validation")
     scored = full.loc[resolved].copy()
     prospective = full.loc[~resolved]
     last_resolved = int(scored.era_n.max())
-    assert prospective.empty or prospective.era_n.min() > last_resolved
-    assert prospective[target].isna().all()
+    if not (prospective.empty or prospective.era_n.min() > last_resolved):
+        raise ValueError("unresolved rows interleave resolved eras")
+    if prospective[target].notna().any():
+        raise ValueError("reserved prospective rows unexpectedly carry targets")
     prospective.drop(columns=[target, META_COL, BENCHMARK_COL]).to_parquet(
         ev / "prospective_preds.parquet")
     full.drop(columns=[META_COL, BENCHMARK_COL]).loc[resolved].to_parquet(ev / "forward_preds.parquet")

@@ -90,30 +90,91 @@ evidence only.
 | Ender residual vs benchmark (member) | 0.0248 | 0.0165 | 0.0113 | 0.0107 | 0.30 | 0.43 |
 | dc_resid_ensemble recreation (contextual) | 0.0282 | 0.0152 | 0.0060 | 0.0071 | 0.45 | 0.69 |
 
-**Hypothesis 1 fails.** The equal-weight blend has positive CORR, nonnegative MMC and
-slightly positive contribution beyond Ender (0.0002). But its paired MMC difference from
-Ender alone is −0.0011 (95% CI −0.0023 to 0.0005; positive in 36% of eras). It loses
-MMC to Ender in three of four blocks (block 1159: +0.0003). Each incremental addition is
-also slightly negative.
+### Decision: the predefined development screen failed
 
-Why: the raw-target members are near copies. Their predictions correlate 0.80–0.89 with
-each other, their per-era CORR scores 0.88–0.94, and each correlates about 0.8 with the
-benchmark. Averaging them mostly averages away noise Ender already handles, and adds
-nothing the meta model lacks.
+The recorded decision stands: `hypothesis1_passed: false`
+(`artifacts/dc_mavone_research_v1/evaluation/decision.json`). The fixed four-target
+equal-weight blend met three of the four criteria. It had positive mean CORR (0.0249),
+nonnegative MMC (0.0105) and slightly positive contribution beyond Ender (+0.00016). It
+missed the fourth: its paired mean MMC difference from Ender alone was **−0.001063**.
 
-What does help, as context: removing the benchmark from the label. The residual member
-alone has the best MMC (0.0165, sharpe 2.1) and lowest meta correlation (0.30). The
-contextual dc_resid_ensemble recreation beats Ender alone by +0.0036 MMC
-(CI 0.0020–0.0069) and beats the equal-weight blend in three of four blocks. This was not
-the controlled test, and its member recipe came from earlier inspected research.
+That number shows a failure to demonstrate improvement, not proof that the blend is
+worse. The exploratory 13-era block-bootstrap interval is **[−0.00227, +0.00047]**. It
+spans zero and rests on only about 7 effective blocks. The blend's MMC was above Ender's
+in 36% of eras and in one of four blocks (1159: +0.00029). This result also does not
+show that the blend contains no useful signal (its own CORR and MMC are positive). Nor
+does it disprove multi-target ensembling in general. It tested one fixed recipe: four
+raw-label targets with equal weights. The test used previously inspected eras and a
+retrospective simulation.
 
-**Phase 4 gate fails:** MMC weight selection needs 195 contiguous forward eras with MMC;
-there are 95. Learned weights are deferred, and BMC is not substituted.
+### Incremental additions (fixed pre-registered order)
+
+| Step | MMC | Change in MMC |
+|---|---:|---:|
+| Ender alone | 0.011554 | — |
+| + Teager2b | 0.010791 | −0.000762 |
+| + Jasper | 0.011048 | **+0.000257** |
+| + Rowan (= equal-weight 4) | 0.010491 | −0.000557 |
+
+Adding Jasper to Ender + Teager2b raised MMC, but the resulting trio was still below
+Ender alone. These are single-path diagnostics on inspected eras, not a basis for
+choosing members.
+
+### A plausible interpretation, not an established cause
+
+One plausible reading is prediction redundancy. The raw-target members' predictions
+correlate 0.80–0.89 with each other, and their per-era CORR scores correlate 0.88–0.94.
+Each correlates about 0.8 with the benchmark. Members this similar have little room to
+diversify each other or the meta model. This experiment did not test that mechanism
+causally. Other explanations, such as period effects or the matched recipe, are not
+ruled out.
+
+### Contextual comparisons (outside the controlled hypothesis)
+
+| Model | CORR (sharpe) | MMC (sharpe) | Corr with meta |
+|---|---:|---:|---:|
+| Benchmark-residual Ender (member) | 0.0248 (2.41) | 0.0165 (2.10) | 0.30 |
+| dc_resid_ensemble recreation | 0.0282 (2.02) | 0.0152 (1.75) | 0.45 |
+| Ender alone | 0.0260 (1.55) | 0.0116 (1.10) | 0.50 |
+
+Benchmark-residual Ender had the higher observed MMC. The contextual residual ensemble
+had the higher CORR. Neither is an unqualified winner, and no paired test between the two
+was predeclared. The ensemble's exploratory paired MMC gain over Ender alone was +0.0036
+(interval 0.0020 to 0.0069). Both recipes came from earlier inspected research, and both
+were evaluated on inspected eras. These comparisons motivate the
+[residual ensemble comparison plan](residual_ensemble_comparison_plan.md); they do not
+support any claim beyond that.
+
+### Phase 4 gate, reserved eras and compute
+
+**Phase 4 gate fails:** MMC weight selection needs 195 contiguous forward eras with MMC,
+and there are 95. Learned weights are deferred, and BMC is not substituted.
+
+Eras 1228–1236 are **reserved, unscored predictions** in `prospective_preds.parquet`.
+They are not live-submission results and not a completed confirmation. Their target and
+newer meta-model values have not been read.
 
 Compute: 2.7 h for four blocks of five boosters, 6–8.5 min per booster on 1.53–1.66M
 rows, peak RSS 11.0 GB. Raw and normalized forward predictions are in
-`artifacts/dc_mavone_research_v1/evaluation/forward_preds.parquet`. The 9 prospective
-eras (1228–1236) are in `prospective_preds.parquet`, unscored.
+`artifacts/dc_mavone_research_v1/evaluation/forward_preds.parquet`.
 
 Stopped for review before Phase 4. No upload, packaging or live change; the protected
 production file hashes were unchanged on every run.
+
+## Provenance status of the completed run
+
+`dc_mavone_research_v1` was produced before provenance version 2. Its manifest records
+the config, feature order, prediction and model hashes, and source hashes. It does not
+record the implementation-file set or the dataset-file hashes that the hardened runner
+now requires. The updated `run_mavone.py` therefore refuses to resume or re-evaluate
+it, with a "legacy manifest" error. It has not been backfilled. Its saved predictions and
+models still match their recorded hashes, and its `sources/` snapshot is its reproduction
+reference. Re-evaluating with the current runner requires a new run name.
+The smoke run `dc_mavone_smoke_v1` is likewise legacy; the runner's smoke name is now
+`dc_mavone_smoke_v2`.
+
+Guards added after this run: resume and evaluation reject any difference in config,
+implementation hashes, feature order or dataset-file hashes. Completed blocks' prediction
+and model files are re-hashed before reuse. Completed runs and existing evaluations are
+never reopened. All of these raise `ProvenanceError` before anything is written
+(`tests/test_mavone_provenance.py`).
