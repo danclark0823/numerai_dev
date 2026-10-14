@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="426" height="446" font-family="sans-serif" font-size="12">
+<text x="10" y="20" font-size="14">Mean per-era target rank correlation, eras &lt;= 1119</text>
+<text x="144" y="76.0" text-anchor="end">ender</text>
+<rect x="150" y="40" width="64" height="64" fill="rgb(255,0,0)" stroke="white"/>
+<text x="182.0" y="76.0" text-anchor="middle">1.00</text>
+<rect x="214" y="40" width="64" height="64" fill="rgb(255,53,53)" stroke="white"/>
+<text x="246.0" y="76.0" text-anchor="middle">0.79</text>
+<rect x="278" y="40" width="64" height="64" fill="rgb(255,52,52)" stroke="white"/>
+<text x="310.0" y="76.0" text-anchor="middle">0.79</text>
+<rect x="342" y="40" width="64" height="64" fill="rgb(255,62,62)" stroke="white"/>
+<text x="374.0" y="76.0" text-anchor="middle">0.75</text>
+<text x="144" y="140.0" text-anchor="end">teager2b</text>
+<rect x="150" y="104" width="64" height="64" fill="rgb(255,53,53)" stroke="white"/>
+<text x="182.0" y="140.0" text-anchor="middle">0.79</text>
+<rect x="214" y="104" width="64" height="64" fill="rgb(255,0,0)" stroke="white"/>
+<text x="246.0" y="140.0" text-anchor="middle">1.00</text>
+<rect x="278" y="104" width="64" height="64" fill="rgb(255,75,75)" stroke="white"/>
+<text x="310.0" y="140.0" text-anchor="middle">0.70</text>
+<rect x="342" y="104" width="64" height="64" fill="rgb(255,61,61)" stroke="white"/>
+<text x="374.0" y="140.0" text-anchor="middle">0.76</text>
+<text x="144" y="204.0" text-anchor="end">jasper</text>
+<rect x="150" y="168" width="64" height="64" fill="rgb(255,52,52)" stroke="white"/>
+<text x="182.0" y="204.0" text-anchor="middle">0.79</text>
+<rect x="214" y="168" width="64" height="64" fill="rgb(255,75,75)" stroke="white"/>
+<text x="246.0" y="204.0" text-anchor="middle">0.70</text>
+<rect x="278" y="168" width="64" height="64" fill="rgb(255,0,0)" stroke="white"/>
+<text x="310.0" y="204.0" text-anchor="middle">1.00</text>
+<rect x="342" y="168" width="64" height="64" fill="rgb(255,81,81)" stroke="white"/>
+<text x="374.0" y="204.0" text-anchor="middle">0.68</text>
+<text x="144" y="268.0" text-anchor="end">rowan</text>
+<rect x="150" y="232" width="64" height="64" fill="rgb(255,62,62)" stroke="white"/>
+<text x="182.0" y="268.0" text-anchor="middle">0.75</text>
+<rect x="214" y="232" width="64" height="64" fill="rgb(255,61,61)" stroke="white"/>
+<text x="246.0" y="268.0" text-anchor="middle">0.76</text>
+<rect x="278" y="232" width="64" height="64" fill="rgb(255,81,81)" stroke="white"/>
+<text x="310.0" y="268.0" text-anchor="middle">0.68</text>
+<rect x="342" y="232" width="64" height="64" fill="rgb(255,0,0)" stroke="white"/>
+<text x="374.0" y="268.0" text-anchor="middle">1.00</text>
+<text x="182.0" y="310" text-anchor="middle">ender</text>
+<text x="246.0" y="310" text-anchor="middle">teager2b</text>
+<text x="310.0" y="310" text-anchor="middle">jasper</text>
+<text x="374.0" y="310" text-anchor="middle">rowan</text>
+</svg>

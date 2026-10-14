@@ -1,0 +1,44 @@
+# Frozen dc_mavone Phase 0-3 design; see docs/multi_target_ensemble_plan.md and docs/mavone.md.
+# dc_mavone is a separate research ensemble. Nothing here touches the four live models.
+name: dc_mavone_research_v1
+audit_name: dc_mavone_audit_v2   # v1 had era dates anchored on the live round number
+data:
+  version: v5.3
+  feature_set: all
+  scoring_target: target_ender_60
+  remote_check: data/remote_check_2026-10-14/meta_model.parquet
+# Pre-registered member order; also the fixed incremental-addition order.
+members:
+  ender: target_ender_60
+  teager2b: target_teager2b_60
+  jasper: target_jasper_60
+  rowan: target_rowan_60
+# Contextual dc_resid_ensemble recreation (not part of the controlled experiment):
+# Ender-60 residualized against v53_lgbm_ender60 (rows without the benchmark get zero
+# weight on the shared training rows), blended equally with the raw Teager2b member,
+# then 50% neutralized against the medium feature set.
+control:
+  name: resid_ens
+  resid_member: ender_resid
+  residualize_against: [v53_lgbm_ender60]
+  partner: teager2b
+  neutralize: {feature_set: medium, proportion: 0.5}
+schedule:
+  first_block_start: 1133
+  last_block_start: 1211
+  block_eras: 26
+  gap: 13
+training:
+  stride: 4
+  anchor: 1   # global: era % 4 == 1 in both splits, for every target
+  history_period_end: 1119   # Phase 1 audit uses only eras <= the first fit endpoint
+lgbm:
+  objective: regression
+  n_estimators: 2000
+  learning_rate: 0.01
+  max_depth: 5
+  num_leaves: 31
+  colsample_bytree: 0.1
+  random_state: 42
+  num_threads: 10
+  verbose: -1
