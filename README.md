@@ -126,7 +126,11 @@ decay in every fold, so it is shelved; the Rondal recreation scored CORR 0.024 a
 MMC 0.011 on the development windows. The alternate-target residual ridge,
 **dc_azar** (a separate model; [plan](docs/azar_plan.md)), was also
 [shelved](docs/azar.md): its inner-selected target changed every fold and
-contributed negatively beyond Rondal in all three windows.
+contributed negatively beyond Rondal in all three windows. The portfolio-residual
+LightGBM, **dc_carmella** (a separate model; [plan](docs/carmella_plan.md)),
+[passed its development screen](docs/carmella.md). It added to matched Rondal
+and Tyndal recreations in all three windows with MMC 0.014, but stays close to
+Tyndal. Next is a frozen replication on fresh live eras, not deployment.
 
 See [docs/plan.md](docs/plan.md). Next up: target ensembles and feature
 neutralization to raise MMC, then automated live submissions (unstaked).
