@@ -66,8 +66,10 @@ the same plan was briefly placed in the working tree but never ran on full data.
 It found the existing output directory and stopped, as designed. The repository
 files were restored from the snapshots, and their SHA-256 hashes match the
 manifest. The config was rebuilt from the manifest. That second launch
-overwrote the run's console log `/tmp/carmella_full.log`; the manifest,
-metrics, report and experiment-log record are complete.
+overwrote the `/tmp/carmella_full.log` copy of the console log. The full console
+output survives in the Cursor terminal capture, which shows a clean exit after
+5,949 seconds. The manifest, metrics, report and experiment-log record are
+complete.
 
 Verified checks: forward-chain chronology, label parity, identical training rows,
 Rondal parity with Taren, complete eras, finite predictions, submission validity,
