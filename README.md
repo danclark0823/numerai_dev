@@ -131,6 +131,14 @@ LightGBM, **dc_carmella** (a separate model; [plan](docs/carmella_plan.md)),
 [passed its development screen](docs/carmella.md). It added to matched Rondal
 and Tyndal recreations in all three windows with MMC 0.014, but stays close to
 Tyndal. Next is a frozen replication on fresh live eras, not deployment.
+The multi-target ensemble **dc_mavone** ([plan](docs/multi_target_ensemble_plan.md))
+completed Phases 0–3 ([results](docs/mavone.md)). An equal-weight blend of
+LightGBM models on four raw 60-day targets did not beat matched Ender alone on
+forward eras 1133–1227 (MMC 0.0105 vs 0.0116), so hypothesis 1 failed. The raw-target
+members correlate 0.80–0.89 with each other and about 0.8 with the benchmark.
+A benchmark-residual member (MMC 0.0165) and the dc_resid_ensemble recreation
+(MMC 0.0152) did much better. The MMC-history gate for weight optimization fails
+(95 of 195 eras), so learned weights are deferred.
 
 See [docs/plan.md](docs/plan.md). Next up: target ensembles and feature
 neutralization to raise MMC, then automated live submissions (unstaked).
