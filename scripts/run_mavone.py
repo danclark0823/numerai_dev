@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import copy
 import gc
-import hashlib
 import json
 import os
 import platform
@@ -72,6 +71,18 @@ from numerai_dev.mavone import (
     stride_mask,
     training_mask,
 )
+from numerai_dev.provenance import (  # noqa: F401  (re-exported for tests and callers)
+    COMPLETED,
+    IDENTITY_KEYS,
+    PROVENANCE_VERSION,
+    ProvenanceError,
+    check_identity,
+    identity,
+    ids_hash,
+    open_for_evaluation,
+    open_for_forward,
+    verify_blocks,
+)
 from numerai_dev.targets import residualize
 from numerai_dev.wenek import paired_block_ci
 
@@ -81,18 +92,15 @@ PARITY_ROWS = 512
 # dc_mavone_smoke_v1 is a legacy (pre-provenance v2) run and cannot be resumed.
 SMOKE = {"name": "dc_mavone_smoke_v2", "features": 64, "n_estimators": 20,
          "blocks": [1133, 1211]}
-PROVENANCE_VERSION = 2
 # Code whose behaviour determines fitted models, predictions and scores.
 IMPLEMENTATION = ["scripts/run_mavone.py", "scripts/run_experiment.py", "scripts/run_wenek.py",
                   "src/numerai_dev/mavone.py", "src/numerai_dev/data.py",
                   "src/numerai_dev/evaluation.py", "src/numerai_dev/azar.py",
                   "src/numerai_dev/targets.py", "src/numerai_dev/live.py",
-                  "src/numerai_dev/wenek.py"]
+                  "src/numerai_dev/wenek.py", "src/numerai_dev/provenance.py"]
 DATASET_FILES = ["features.json", "train.parquet", "validation.parquet",
                  "train_benchmark_models.parquet", "validation_benchmark_models.parquet",
                  "meta_model.parquet"]
-IDENTITY_KEYS = ["config", "feature_order_sha256", "implementation_sha256", "dataset_sha256"]
-COMPLETED = {"forward_complete", "complete"}
 SOURCES = ["scripts/run_mavone.py", "src/numerai_dev/mavone.py", "src/numerai_dev/data.py",
            "src/numerai_dev/evaluation.py", "src/numerai_dev/azar.py",
            "src/numerai_dev/targets.py", "src/numerai_dev/live.py",
@@ -141,14 +149,6 @@ def smoke_cfg(cfg):
     return cfg
 
 
-class ProvenanceError(RuntimeError):
-    """A run's recorded identity does not match what would be used now."""
-
-    def __init__(self, out: Path, problem: str):
-        super().__init__(f"{out.name}: {problem}. Existing artifacts were left unchanged; set "
-                         "a new `name` in the config to start a fresh run.")
-
-
 def run_features(cfg, smoke=False) -> list[str]:
     features = feature_set(cfg["data"]["version"], cfg["data"]["feature_set"])
     return features[:SMOKE["features"]] if smoke else features
@@ -156,78 +156,8 @@ def run_features(cfg, smoke=False) -> list[str]:
 
 def current_identity(cfg, features, root: Path = ROOT, data_dir: Path | None = None) -> dict:
     """Identities a run must keep: config, feature order, implementation and dataset files."""
-    data_dir = data_dir or DATA_DIR / cfg["data"]["version"]
-    return {"config": cfg, "feature_order_sha256": ids_hash(features),
-            "implementation_sha256": {p: digest(root / p) for p in IMPLEMENTATION},
-            "dataset_sha256": {f: digest(data_dir / f) for f in DATASET_FILES}}
-
-
-def check_identity(out: Path, manifest: dict, expected: dict):
-    """Raise ProvenanceError for a legacy manifest or any identity mismatch."""
-    missing = [k for k in ["provenance_version", *IDENTITY_KEYS] if k not in manifest]
-    if missing or manifest.get("provenance_version") != PROVENANCE_VERSION:
-        raise ProvenanceError(out, "legacy manifest without the recorded provenance needed "
-                                   f"for resume or evaluation (missing {missing}); its "
-                                   "sources/ snapshot is its reproduction reference")
-    diffs = []
-    for key in IDENTITY_KEYS:
-        recorded, now = manifest[key], expected[key]
-        if isinstance(now, dict) and key != "config":
-            changed = sorted(k for k in set(recorded) | set(now) if recorded.get(k) != now.get(k))
-            if changed:
-                diffs.append(f"{key} differs for {changed}")
-        elif recorded != now:
-            diffs.append(f"{key} differs")
-    if diffs:
-        raise ProvenanceError(out, "; ".join(diffs))
-
-
-def verify_blocks(out: Path, manifest: dict):
-    """Completed blocks' saved predictions and models must match their recorded hashes."""
-    for key, audit in manifest.get("completed_blocks", {}).items():
-        bdir = out / "blocks" / key
-        files = {"preds.parquet": audit["preds_sha256"],
-                 **{f"{n}.txt": h for n, h in audit["model_sha256"].items()}}
-        for name, recorded in files.items():
-            path = bdir / name
-            if not path.exists():
-                raise ProvenanceError(out, f"block {key} is missing {name}")
-            if digest(path) != recorded:
-                raise ProvenanceError(out, f"block {key} {name} does not match its recorded hash")
-
-
-def open_for_forward(out: Path, expected: dict, resume: bool) -> dict | None:
-    """Existing manifest to continue (verified, unmodified), or None for a new run."""
-    path = out / "manifest.json"
-    if not path.exists():
-        if out.exists():
-            raise ProvenanceError(out, "directory exists without a manifest")
-        return None
-    manifest = json.loads(path.read_text())
-    if manifest.get("status") in COMPLETED:
-        raise ProvenanceError(out, f"run is already {manifest['status']}; completed runs are "
-                                   "never reopened")
-    if not resume:
-        raise ProvenanceError(out, "run exists; pass --resume to continue it")
-    check_identity(out, manifest, expected)
-    verify_blocks(out, manifest)
-    return manifest
-
-
-def open_for_evaluation(out: Path, expected: dict) -> dict:
-    path = out / "manifest.json"
-    if not path.exists():
-        raise ProvenanceError(out, "no training manifest")
-    manifest = json.loads(path.read_text())
-    check_identity(out, manifest, expected)
-    if manifest.get("status") != "forward_complete":
-        raise ProvenanceError(out, f"forward predictions are {manifest.get('status')}, "
-                                   "not forward_complete")
-    if (out / "evaluation").exists():
-        raise ProvenanceError(out, "evaluation already exists; completed evaluations are "
-                                   "never overwritten")
-    verify_blocks(out, manifest)
-    return manifest
+    return identity(cfg, features, IMPLEMENTATION, DATASET_FILES, root,
+                    data_dir or DATA_DIR / cfg["data"]["version"])
 
 
 def environment():
@@ -237,10 +167,6 @@ def environment():
             "numerai_tools": getattr(numerai_tools, "__version__", "0.7.2"),
             "cpu_count": os.cpu_count(), "machine": platform.machine(),
             "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS")}
-
-
-def ids_hash(ids) -> str:
-    return hashlib.sha256("\n".join(map(str, ids)).encode()).hexdigest()
 
 
 def md_table(df: pd.DataFrame, floatfmt: str = "{:.4f}") -> list[str]:

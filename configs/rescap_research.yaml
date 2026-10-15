@@ -1,0 +1,39 @@
+# Frozen dc_rescap design; see docs/residual_capacity_ensemble_plan.md.
+# A separate research experiment. Nothing here touches the four live models.
+name: dc_rescap_research_v1
+timing_name: dc_rescap_timing_v1
+data:
+  version: v5.3
+  feature_set: all
+  scoring_target: target_ender_60
+schedule:
+  first_block_start: 1133
+  last_block_start: 1211
+  block_eras: 26
+  gap: 13
+  last_eval_era: 1227   # eras 1228+ are reserved and never predicted or scored here
+trees:
+  # Mavone's ender_resid label: target_ender_60 residualized per era against the
+  # gaussianized v53_lgbm_ender60; zero weight where the benchmark is missing.
+  residualize_against: [v53_lgbm_ender60]
+  stride: 4
+  anchor: 1
+  recipes:
+    current:
+      params: {objective: regression, n_estimators: 2000, learning_rate: 0.01, max_depth: 5,
+               num_leaves: 31, colsample_bytree: 0.1, random_state: 42, num_threads: 10,
+               verbose: -1}
+    large:
+      # Published standard_large_lgbm_params (accessed 2026-10-14) + objective and seed.
+      params: {objective: regression, n_estimators: 20000, learning_rate: 0.001, max_depth: 6,
+               num_leaves: 64, colsample_bytree: 0.1, random_state: 42, num_threads: 10,
+               verbose: -1}
+rondal:
+  # dc_rondal's established recipe: ridge on every eligible row, label residualized
+  # against both benchmarks; refit at each block's endpoint.
+  residualize_against: [v53_lgbm_ender60, v53_lgbm_ender20]
+  alpha: 10
+blend_weights: [0.5, 0.5]
+num_threads: 10
+# The approved compute budget is passed as --budget-hours (recorded per run), not here,
+# so approving a budget cannot change the frozen design's identity.
